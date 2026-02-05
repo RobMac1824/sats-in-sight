@@ -25,11 +25,10 @@ const CONFIG = {
   maxAsteroids: 6,
 };
 
-const INPUT_SMOOTHING = 0.25;
-const SWIPE_SENSITIVITY = 1.6;
 const MOBILE_ACCEL_MULTIPLIER = 2.1;
 const MOBILE_MAX_SPEED_MULTIPLIER = 1.35;
-const SWIPE_DEADZONE_PX = 0.5;
+const STICK_RADIUS = 80;
+const STICK_FRICTION = 0.94;
 const IS_COARSE_POINTER =
   window.matchMedia && window.matchMedia("(pointer: coarse)").matches;
 
@@ -173,10 +172,12 @@ let flashes = [];
 let hitPopups = [];
 let lastShotTime = 0;
 let diagnosticsEnabled = false;
-let pointerActive = false;
+let isTouching = false;
 let pointerPos = { x: 0, y: 0 };
-let smoothedPointerPos = { x: 0, y: 0 };
 let lastPointerCanvas = null;
+let stickCenter = { x: 0, y: 0 };
+let stickOffset = { x: 0, y: 0 };
+let stickVector = { x: 0, y: 0 };
 let player = { x: 0, y: 0, vx: 0, vy: 0, angle: 0 };
 let activeDroneId = DRONE_OPTIONS[0].id;
 let activeDrone = DRONE_OPTIONS[0];
@@ -368,7 +369,7 @@ function setPointerPosition(clientX, clientY, force = false) {
   if (!force && lastPointerCanvas) {
     const dx = Math.abs(canvasX - lastPointerCanvas.x);
     const dy = Math.abs(canvasY - lastPointerCanvas.y);
-    if (dx < SWIPE_DEADZONE_PX && dy < SWIPE_DEADZONE_PX) {
+    if (dx === 0 && dy === 0) {
       return;
     }
   }
@@ -382,6 +383,43 @@ function setPointerPosition(clientX, clientY, force = false) {
 
 function clamp(value, min, max) {
   return Math.max(min, Math.min(max, value));
+}
+
+function updateStickFromPointer() {
+  let dx = pointerPos.x - stickCenter.x;
+  let dy = pointerPos.y - stickCenter.y;
+  const mag = Math.hypot(dx, dy) || 0;
+  if (mag > STICK_RADIUS) {
+    const scale = STICK_RADIUS / mag;
+    dx *= scale;
+    dy *= scale;
+  }
+  stickOffset = { x: dx, y: dy };
+  stickVector = {
+    x: dx / STICK_RADIUS,
+    y: dy / STICK_RADIUS,
+  };
+}
+
+function startStickInput(clientX, clientY) {
+  isTouching = true;
+  setPointerPosition(clientX, clientY, true);
+  stickCenter = { ...pointerPos };
+  stickOffset = { x: 0, y: 0 };
+  stickVector = { x: 0, y: 0 };
+}
+
+function moveStickInput(clientX, clientY) {
+  setPointerPosition(clientX, clientY);
+  updateStickFromPointer();
+}
+
+function endStickInput() {
+  isTouching = false;
+  stickOffset = { x: 0, y: 0 };
+  stickVector = { x: 0, y: 0 };
+  lastPointerCanvas = null;
+  touchEl.textContent = "0,0";
 }
 
 function spawnAsteroid(size = "large", position = null) {
@@ -556,31 +594,24 @@ function applyDamage(amount) {
 function updatePlayer(dt) {
   const centerX = viewWidth * 0.5;
   const centerY = viewHeight * 0.55;
-  if (pointerActive) {
-    smoothedPointerPos.x += (pointerPos.x - smoothedPointerPos.x) * INPUT_SMOOTHING;
-    smoothedPointerPos.y += (pointerPos.y - smoothedPointerPos.y) * INPUT_SMOOTHING;
-  }
-  const accelBase = activeDrone.accel * (IS_COARSE_POINTER ? MOBILE_ACCEL_MULTIPLIER : 1);
+  const accelBase =
+    activeDrone.accel *
+    (IS_COARSE_POINTER ? MOBILE_ACCEL_MULTIPLIER : 1) *
+    0.75;
   const accel = 1 - Math.pow(1 - accelBase, dt * 60);
   const maxSpeed = activeDrone.maxSpeed * (IS_COARSE_POINTER ? MOBILE_MAX_SPEED_MULTIPLIER : 1);
   let desiredVx = 0;
   let desiredVy = 0;
-  if (pointerActive) {
-    const dx = smoothedPointerPos.x - player.x;
-    const dy = smoothedPointerPos.y - player.y;
-    const dist = Math.hypot(dx, dy) || 1;
-    const dirX = dx / dist;
-    const dirY = dy / dist;
-    const throttle = clamp(dist / 120, 0, 1);
-    desiredVx = dirX * maxSpeed * SWIPE_SENSITIVITY * throttle;
-    desiredVy = dirY * maxSpeed * SWIPE_SENSITIVITY * throttle;
+  if (isTouching) {
+    desiredVx = stickVector.x * maxSpeed;
+    desiredVy = stickVector.y * maxSpeed;
   }
   player.vx += (desiredVx - player.vx) * accel;
   player.vy += (desiredVy - player.vy) * accel;
-  if (!pointerActive) {
-    const drag = 1 - Math.pow(1 - 0.08, dt * 60);
-    player.vx += (0 - player.vx) * drag;
-    player.vy += (0 - player.vy) * drag;
+  if (!isTouching) {
+    const friction = Math.pow(STICK_FRICTION, dt * 60);
+    player.vx *= friction;
+    player.vy *= friction;
   }
   player.x += player.vx * dt;
   player.y += player.vy * dt;
@@ -592,11 +623,9 @@ function updatePlayer(dt) {
   player.x = clamp(player.x, minX, maxX);
   player.y = clamp(player.y, minY, maxY);
 
-  const velAngle = Math.atan2(player.vy, player.vx);
-  if (pointerActive && (Math.abs(desiredVx) > 1 || Math.abs(desiredVy) > 1)) {
-    player.angle = Math.atan2(desiredVy, desiredVx);
-  } else if (!Number.isNaN(velAngle) && (Math.abs(player.vx) > 1 || Math.abs(player.vy) > 1)) {
-    player.angle = velAngle;
+  const speed = Math.hypot(player.vx, player.vy);
+  if (speed > 5) {
+    player.angle = Math.atan2(player.vy, player.vx);
   } else if (game.state === GAME_STATES.READY) {
     const dx = centerX - player.x;
     const dy = centerY - player.y;
@@ -781,6 +810,40 @@ function drawPlayer() {
     ctx.closePath();
     ctx.fill();
   }
+  const noseLength = size * 0.45;
+  const noseWidth = size * 0.18;
+  ctx.strokeStyle = "rgba(240, 250, 255, 0.85)";
+  ctx.fillStyle = "rgba(240, 250, 255, 0.35)";
+  ctx.lineWidth = 2;
+  ctx.beginPath();
+  ctx.moveTo(0, -noseLength);
+  ctx.lineTo(-noseWidth, -noseLength + noseWidth * 1.3);
+  ctx.lineTo(noseWidth, -noseLength + noseWidth * 1.3);
+  ctx.closePath();
+  ctx.fill();
+  ctx.stroke();
+  ctx.restore();
+}
+
+function drawJoystick() {
+  if (!isTouching) return;
+  const tipX = stickCenter.x + stickOffset.x;
+  const tipY = stickCenter.y + stickOffset.y;
+  ctx.save();
+  ctx.strokeStyle = "rgba(160, 210, 255, 0.35)";
+  ctx.lineWidth = 2;
+  ctx.beginPath();
+  ctx.arc(stickCenter.x, stickCenter.y, STICK_RADIUS, 0, Math.PI * 2);
+  ctx.stroke();
+  ctx.strokeStyle = "rgba(200, 240, 255, 0.55)";
+  ctx.beginPath();
+  ctx.moveTo(stickCenter.x, stickCenter.y);
+  ctx.lineTo(tipX, tipY);
+  ctx.stroke();
+  ctx.fillStyle = "rgba(220, 250, 255, 0.55)";
+  ctx.beginPath();
+  ctx.arc(tipX, tipY, 6, 0, Math.PI * 2);
+  ctx.fill();
   ctx.restore();
 }
 
@@ -966,6 +1029,7 @@ function render() {
   drawFxBursts();
   drawFlashes();
   drawHitPopups();
+  drawJoystick();
   drawPlayer();
   drawCountdownOverlay();
   ctx.restore();
@@ -1033,8 +1097,10 @@ function startGame() {
   flashes = [];
   hitPopups = [];
   satsCollected = 0;
-  pointerActive = false;
+  isTouching = false;
   lastPointerCanvas = null;
+  stickOffset = { x: 0, y: 0 };
+  stickVector = { x: 0, y: 0 };
   player = {
     x: viewWidth * 0.5,
     y: viewHeight * 0.55,
@@ -1058,31 +1124,25 @@ function endGame() {
   finalScore.textContent = score;
   finalWave.textContent = wave;
   finalCombo.textContent = combo;
-  pointerActive = false;
-  lastPointerCanvas = null;
-  touchEl.textContent = "0,0";
+  endStickInput();
   setState(GAME_STATES.GAMEOVER);
   updateLeaderboard();
 }
 
 function handlePointerDown(event) {
   if (game.state !== GAME_STATES.READY && game.state !== GAME_STATES.PLAYING) return;
-  pointerActive = true;
   resumeAudio();
-  setPointerPosition(event.clientX, event.clientY, true);
-  smoothedPointerPos = { ...pointerPos };
+  startStickInput(event.clientX, event.clientY);
 }
 
 function handlePointerMove(event) {
   if (game.state !== GAME_STATES.READY && game.state !== GAME_STATES.PLAYING) return;
-  if (!pointerActive) return;
-  setPointerPosition(event.clientX, event.clientY);
+  if (!isTouching) return;
+  moveStickInput(event.clientX, event.clientY);
 }
 
 function handlePointerUp() {
-  pointerActive = false;
-  lastPointerCanvas = null;
-  touchEl.textContent = "0,0";
+  endStickInput();
 }
 
 function handleTouchStart(event) {
@@ -1090,27 +1150,23 @@ function handleTouchStart(event) {
   event.preventDefault();
   const touch = event.touches[0];
   if (!touch) return;
-  pointerActive = true;
   resumeAudio();
-  setPointerPosition(touch.clientX, touch.clientY, true);
-  smoothedPointerPos = { ...pointerPos };
+  startStickInput(touch.clientX, touch.clientY);
 }
 
 function handleTouchMove(event) {
   if (game.state !== GAME_STATES.READY && game.state !== GAME_STATES.PLAYING) return;
   event.preventDefault();
-  if (!pointerActive) return;
+  if (!isTouching) return;
   const touch = event.touches[0];
   if (!touch) return;
-  setPointerPosition(touch.clientX, touch.clientY);
+  moveStickInput(touch.clientX, touch.clientY);
 }
 
 function handleTouchEnd(event) {
   event.preventDefault();
   if (event.touches.length === 0) {
-    pointerActive = false;
-    lastPointerCanvas = null;
-    touchEl.textContent = "0,0";
+    endStickInput();
   }
 }
 
