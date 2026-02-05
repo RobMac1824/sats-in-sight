@@ -38,11 +38,14 @@ const INPUT_ACCEL = 0.4;
 const POINTER_FOLLOW_STRENGTH = 0.35;
 
 const DRONE_STORAGE_KEY = "sats_drone_skin";
-const PLAYER_SCALE = 0.02 * 1.05;
+const PLAYER_SCALE = 0.02 * 1.05 * 1.2;
 const PLAYER_BASE_SIZE = 18;
 const STAR_SCALE = 0.05;
 const COIN_SCALE = 0.05;
 const Z_NEAR = CONFIG.nearZ;
+const PLAYER_Z = 8;
+const SHOT_BEAM_LENGTH_Z = 6;
+const SHOT_HIT_WINDOW_Z = 1.4;
 const GAME_STATES = {
   BOOT: "BOOT",
   START: "START",
@@ -514,8 +517,8 @@ function fireShot(now) {
   shots.push({
     x: player.x,
     y: player.y,
-    z: Z_NEAR,
-    radius: 0.06,
+    z: PLAYER_Z + 2,
+    radius: 0.1,
   });
   lastShotTime = now;
   playShoot();
@@ -638,11 +641,10 @@ function updateEntities(dt, now) {
   shots.forEach((shot, shotIndex) => {
     sats.forEach((sat, satIndex) => {
       if (sat.type !== "red") return;
-      const dx = shot.x - sat.x;
-      const dy = shot.y - sat.y;
-      const dz = shot.z - sat.z;
-      const dist = Math.hypot(dx, dy, dz);
-      if (dist < sat.radius + shot.radius) {
+      const hitWindow = Math.abs(shot.z - sat.z) < SHOT_HIT_WINDOW_Z;
+      if (!hitWindow) return;
+      const dist2D = Math.hypot(shot.x - sat.x, shot.y - sat.y);
+      if (dist2D < sat.radius + shot.radius) {
         hitSat(sat);
         shots.splice(shotIndex, 1);
         sats.splice(satIndex, 1);
@@ -957,7 +959,7 @@ function drawTunnel() {
 
 function drawPlayer() {
   ctx.save();
-  const projected = projectPoint(0, 0, 6);
+  const projected = projectPoint(0, 0, PLAYER_Z);
   const img = droneImages.get(activeDroneId);
   const size = PLAYER_BASE_SIZE * PLAYER_SCALE * projected.scale;
   if (img && img.complete) {
@@ -1175,22 +1177,24 @@ function drawShots() {
   ctx.save();
   shots.forEach((shot) => {
     if (shot.z <= Z_NEAR * 0.6) return;
-    const projected = projectWorldPoint(shot.x, shot.y, shot.z);
-    const length = 22 * projected.scale;
+    const p0 = projectWorldPoint(shot.x, shot.y, shot.z);
+    const p1 = projectWorldPoint(shot.x, shot.y, shot.z + SHOT_BEAM_LENGTH_Z);
+    const beamLength = Math.hypot(p1.x - p0.x, p1.y - p0.y);
+    const beamWidth = Math.max(1, beamLength * 0.08);
     ctx.strokeStyle = "rgba(120, 245, 255, 0.9)";
-    ctx.lineWidth = 1.2;
+    ctx.lineWidth = beamWidth;
     ctx.shadowColor = "rgba(120, 245, 255, 0.6)";
     ctx.shadowBlur = 8;
     ctx.beginPath();
-    ctx.moveTo(projected.x, projected.y);
-    ctx.lineTo(projected.x, projected.y - length);
+    ctx.moveTo(p0.x, p0.y);
+    ctx.lineTo(p1.x, p1.y);
     ctx.stroke();
     ctx.strokeStyle = "rgba(210, 255, 255, 0.95)";
-    ctx.lineWidth = 0.6;
+    ctx.lineWidth = Math.max(0.6, beamWidth * 0.4);
     ctx.shadowBlur = 2;
     ctx.beginPath();
-    ctx.moveTo(projected.x, projected.y);
-    ctx.lineTo(projected.x, projected.y - length * 0.8);
+    ctx.moveTo(p0.x, p0.y);
+    ctx.lineTo(p1.x, p1.y);
     ctx.stroke();
   });
   ctx.restore();

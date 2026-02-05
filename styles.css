@@ -200,6 +200,9 @@ html {
   gap: 4px;
   margin-top: 24px;
   text-transform: uppercase;
+  position: relative;
+  right: calc(var(--safe-right) + 14px);
+  max-width: calc(100vw - (var(--safe-left) + var(--safe-right) + 28px));
 }
 
 .hud-bottom {
@@ -404,6 +407,12 @@ html {
 @media (min-width: 768px) {
   #hud {
     font-size: 16px;
+  }
+}
+
+@media (max-width: 420px) {
+  #hud {
+    font-size: 0.9em;
   }
 }
 
