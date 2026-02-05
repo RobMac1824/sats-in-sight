@@ -36,6 +36,12 @@ const SWIPE_SENSITIVITY = 1.6;
 const MAX_FOLLOW_SPEED_MULTIPLIER = 1.5;
 const INPUT_ACCEL = 0.4;
 const POINTER_FOLLOW_STRENGTH = 0.35;
+const MOBILE_ACCEL_MULTIPLIER = 2.0;
+const MOBILE_SWIPE_SENSITIVITY_MULTIPLIER = 1.6;
+const MOBILE_MAX_SPEED_MULTIPLIER = 1.35;
+const SWIPE_DEADZONE_PX = 0.5;
+const IS_COARSE_POINTER =
+  window.matchMedia && window.matchMedia("(pointer: coarse)").matches;
 
 const DRONE_STORAGE_KEY = "sats_drone_skin";
 const PLAYER_SCALE = 0.02 * 1.05 * 1.2;
@@ -153,6 +159,7 @@ let sats = [];
 let powerUps = [];
 let obstacles = [];
 let particles = [];
+let fxBursts = [];
 let flashes = [];
 let hitPopups = [];
 let lastShotTime = 0;
@@ -165,6 +172,7 @@ let diagnosticsEnabled = false;
 let pointerActive = false;
 let pointerPos = { x: 0, y: 0 };
 let smoothedPointerPos = { x: 0, y: 0 };
+let lastPointerCanvas = null;
 let player = { x: 0, y: 0, vx: 0, vy: 0 };
 let activeDroneId = DRONE_OPTIONS[0].id;
 let activeDrone = DRONE_OPTIONS[0];
@@ -380,7 +388,7 @@ function updateDroneSelectionUI() {
   });
 }
 
-function setPointerPosition(clientX, clientY) {
+function setPointerPosition(clientX, clientY, force = false) {
   const rect = canvas.getBoundingClientRect();
   const rawX = (clientX - rect.left) / rect.width;
   const rawY = (clientY - rect.top) / rect.height;
@@ -388,6 +396,14 @@ function setPointerPosition(clientX, clientY) {
   const targetY = (rawY - 0.5) * 2 * WORLD.corridorHalfHeight;
   const canvasX = (clientX - rect.left) * dpr;
   const canvasY = (clientY - rect.top) * dpr;
+  if (!force && lastPointerCanvas) {
+    const dx = Math.abs(canvasX - lastPointerCanvas.x);
+    const dy = Math.abs(canvasY - lastPointerCanvas.y);
+    if (dx < SWIPE_DEADZONE_PX && dy < SWIPE_DEADZONE_PX) {
+      return;
+    }
+  }
+  lastPointerCanvas = { x: canvasX, y: canvasY };
   pointerPos = {
     x: clamp(targetX, -WORLD.corridorHalfWidth, WORLD.corridorHalfWidth),
     y: clamp(targetY, -WORLD.corridorHalfHeight, WORLD.corridorHalfHeight),
@@ -520,9 +536,32 @@ function fireShot(now) {
     y: player.y,
     z: PLAYER_Z + 2,
     radius: 0.1,
+    hueOffset: Math.random() * 40,
   });
   lastShotTime = now;
   playShoot();
+}
+
+function spawnBtcBurst(x, y, z) {
+  const glyphs = ["₿", "₿", "₿", "🟠"];
+  const count = Math.floor(8 + Math.random() * 7);
+  for (let i = 0; i < count; i += 1) {
+    const angle = Math.random() * Math.PI * 2;
+    const speed = 0.8 + Math.random() * 1.4;
+    const life = 0.35 + Math.random() * 0.25;
+    fxBursts.push({
+      x,
+      y,
+      z,
+      vx: Math.cos(angle) * speed,
+      vy: Math.sin(angle) * speed,
+      vz: 0.6 + Math.random() * 0.8,
+      life,
+      maxLife: life,
+      spin: (Math.random() - 0.5) * 1.8,
+      glyph: glyphs[Math.floor(Math.random() * glyphs.length)],
+    });
+  }
 }
 
 function hitSat(sat, options = {}) {
@@ -546,6 +585,7 @@ function hitSat(sat, options = {}) {
     });
   }
   playHit();
+  spawnBtcBurst(sat.x, sat.y, sat.z);
   for (let i = 0; i < 12; i += 1) {
     particles.push({
       x: sat.x,
@@ -598,13 +638,17 @@ function updatePlayer(dt) {
   smoothedPointerPos.y += (pointerPos.y - smoothedPointerPos.y) * INPUT_SMOOTHING;
   const dx = smoothedPointerPos.x - player.x;
   const dy = smoothedPointerPos.y - player.y;
+  const accelBase = activeDrone.accel * (IS_COARSE_POINTER ? MOBILE_ACCEL_MULTIPLIER : 1);
+  const accel = 1 - Math.pow(1 - accelBase, dt * 60);
   const speedBoost = activePowerUps.speed > 0 ? 1.35 : 1;
-  const speed = activeDrone.maxSpeed * speedBoost * SWIPE_SENSITIVITY;
+  const speedMultiplier = IS_COARSE_POINTER ? MOBILE_SWIPE_SENSITIVITY_MULTIPLIER : 1;
+  const speed = activeDrone.maxSpeed * speedBoost * SWIPE_SENSITIVITY * speedMultiplier;
   const desiredVx = dx * speed;
   const desiredVy = dy * speed;
-  player.vx += (desiredVx - player.vx) * activeDrone.accel;
-  player.vy += (desiredVy - player.vy) * activeDrone.accel;
-  const maxSpeed = speed * MAX_FOLLOW_SPEED_MULTIPLIER;
+  player.vx += (desiredVx - player.vx) * accel;
+  player.vy += (desiredVy - player.vy) * accel;
+  const maxSpeedMultiplier = IS_COARSE_POINTER ? MOBILE_MAX_SPEED_MULTIPLIER : 1;
+  const maxSpeed = speed * MAX_FOLLOW_SPEED_MULTIPLIER * maxSpeedMultiplier;
   player.vx = Math.max(-maxSpeed, Math.min(maxSpeed, player.vx));
   player.vy = Math.max(-maxSpeed, Math.min(maxSpeed, player.vy));
   player.x += player.vx * dt;
@@ -643,6 +687,14 @@ function updateEntities(dt, now) {
     particle.life -= dt * 1.1;
   });
   particles = particles.filter((particle) => particle.life > 0);
+
+  fxBursts.forEach((particle) => {
+    particle.x += particle.vx * dt;
+    particle.y += particle.vy * dt;
+    particle.z += particle.vz * dt;
+    particle.life -= dt;
+  });
+  fxBursts = fxBursts.filter((particle) => particle.life > 0);
 
   flashes.forEach((flash) => {
     flash.life -= dt;
@@ -1203,15 +1255,25 @@ function drawShots() {
     const p1 = projectWorldPoint(shot.x, shot.y, shot.z + SHOT_BEAM_LENGTH_Z);
     const beamLength = Math.hypot(p1.x - p0.x, p1.y - p0.y);
     const beamWidth = Math.max(1, beamLength * 0.08);
-    ctx.strokeStyle = "rgba(120, 245, 255, 0.9)";
+    const hueOffset = shot.hueOffset || 0;
+    const gradient = ctx.createLinearGradient(p0.x, p0.y, p1.x, p1.y);
+    const hueStops = [350, 30, 55, 120, 180, 220, 280];
+    hueStops.forEach((hue, index) => {
+      const position = index / (hueStops.length - 1);
+      gradient.addColorStop(
+        position,
+        `hsl(${(hue + hueOffset) % 360} 100% 60%)`,
+      );
+    });
+    ctx.strokeStyle = gradient;
     ctx.lineWidth = beamWidth;
-    ctx.shadowColor = "rgba(120, 245, 255, 0.6)";
+    ctx.shadowColor = "rgba(160, 240, 255, 0.65)";
     ctx.shadowBlur = 8;
     ctx.beginPath();
     ctx.moveTo(p0.x, p0.y);
     ctx.lineTo(p1.x, p1.y);
     ctx.stroke();
-    ctx.strokeStyle = "rgba(210, 255, 255, 0.95)";
+    ctx.strokeStyle = gradient;
     ctx.lineWidth = Math.max(0.6, beamWidth * 0.4);
     ctx.shadowBlur = 2;
     ctx.beginPath();
@@ -1231,6 +1293,29 @@ function drawParticles() {
     ctx.beginPath();
     ctx.arc(projected.x, projected.y, 3 * projected.scale, 0, Math.PI * 2);
     ctx.fill();
+  });
+  ctx.restore();
+}
+
+function drawFxBursts() {
+  ctx.save();
+  ctx.textAlign = "center";
+  ctx.textBaseline = "middle";
+  fxBursts.forEach((particle) => {
+    if (particle.z <= Z_NEAR * 0.6) return;
+    const projected = projectWorldPoint(particle.x, particle.y, particle.z);
+    const alpha = clamp(particle.life / particle.maxLife, 0, 1);
+    const easeScale = 0.7 + 0.6 * alpha;
+    const minSize = IS_COARSE_POINTER ? 12 : 10;
+    const fontSize = Math.max(minSize, 22 * projected.scale) * easeScale;
+    ctx.globalAlpha = alpha;
+    ctx.fillStyle = "rgba(255, 214, 120, 0.95)";
+    ctx.font = `700 ${fontSize}px IBM Plex Mono, Courier New, monospace`;
+    ctx.save();
+    ctx.translate(projected.x, projected.y);
+    ctx.rotate(particle.spin * (1 - alpha));
+    ctx.fillText(particle.glyph, 0, 0);
+    ctx.restore();
   });
   ctx.restore();
 }
@@ -1356,6 +1441,7 @@ function render() {
   drawSats();
   drawPowerUps();
   drawParticles();
+  drawFxBursts();
   drawFlashes();
   drawHitPopups();
   drawPlayer();
@@ -1424,6 +1510,7 @@ function startGame() {
   powerUps = [];
   obstacles = [];
   particles = [];
+  fxBursts = [];
   flashes = [];
   hitPopups = [];
   activePowerUps = {
@@ -1433,6 +1520,7 @@ function startGame() {
   };
   satsCollected = 0;
   pointerActive = false;
+  lastPointerCanvas = null;
   player = { x: 0, y: 0, vx: 0, vy: 0 };
   resumeAudio();
   startCountdownPhase();
@@ -1446,6 +1534,7 @@ function endGame() {
   finalWave.textContent = wave;
   finalCombo.textContent = combo;
   pointerActive = false;
+  lastPointerCanvas = null;
   touchEl.textContent = "0,0";
   setState(GAME_STATES.GAMEOVER);
   updateLeaderboard();
@@ -1455,7 +1544,7 @@ function handlePointerDown(event) {
   if (game.state !== GAME_STATES.READY && game.state !== GAME_STATES.PLAYING) return;
   pointerActive = true;
   resumeAudio();
-  setPointerPosition(event.clientX, event.clientY);
+  setPointerPosition(event.clientX, event.clientY, true);
   smoothedPointerPos = { ...pointerPos };
 }
 
@@ -1469,6 +1558,7 @@ function handlePointerMove(event) {
 
 function handlePointerUp() {
   pointerActive = false;
+  lastPointerCanvas = null;
   touchEl.textContent = "0,0";
 }
 
@@ -1479,7 +1569,7 @@ function handleTouchStart(event) {
   if (!touch) return;
   pointerActive = true;
   resumeAudio();
-  setPointerPosition(touch.clientX, touch.clientY);
+  setPointerPosition(touch.clientX, touch.clientY, true);
   smoothedPointerPos = { ...pointerPos };
 }
 
@@ -1498,6 +1588,7 @@ function handleTouchEnd(event) {
   event.preventDefault();
   if (event.touches.length === 0) {
     pointerActive = false;
+    lastPointerCanvas = null;
     touchEl.textContent = "0,0";
   }
 }
