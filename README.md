@@ -1,3 +1,5 @@
+https://robmac1824.github.io/sats-in-sight/
+
 # Lingo Lingo: BTC Blaster
 
 A swipe-friendly, Star Fox–inspired rail shooter with a Betaflight-style HUD. Blast incoming ₿ targets, dodge obstacles, and chase your high score in this mobile-first HTML5 canvas game.
