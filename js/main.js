@@ -1026,23 +1026,6 @@ function drawCountdownOverlay() {
   ctx.restore();
 }
 
-function drawHudDebugRuler() {
-  const inset = game.hudInset || { top: 0, right: 0, bottom: 0, left: 0 };
-  const xRight = game.viewW - inset.right - 2;
-  ctx.save();
-  ctx.strokeStyle = "rgba(255,0,0,0.6)";
-  ctx.beginPath();
-  ctx.moveTo(xRight, 0);
-  ctx.lineTo(xRight, game.viewH);
-  ctx.stroke();
-  ctx.fillStyle = "rgba(255,0,0,0.7)";
-  ctx.font = "10px IBM Plex Mono, Courier New, monospace";
-  ctx.textAlign = "right";
-  ctx.textBaseline = "top";
-  ctx.fillText("RIGHT EDGE", xRight - 4, inset.top + 6);
-  ctx.restore();
-}
-
 function render() {
   ctx.clearRect(0, 0, game.viewW, game.viewH);
   ctx.save();
@@ -1063,7 +1046,6 @@ function render() {
   drawPlayer();
   drawCountdownOverlay();
   ctx.restore();
-  drawHudDebugRuler();
 }
 
 function loop(timestamp) {
