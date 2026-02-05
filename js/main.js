@@ -22,13 +22,14 @@ const CONFIG = {
   obstacleSpeed: 1.6,
   powerUpSpeed: 1.1,
   spawnRate: 0.015,
-  obstacleRate: 0.004,
+  obstacleRate: 0.005,
   powerUpRate: 0.002,
-  fireRate: 360,
+  fireRate: 240,
   powerUpDuration: 5000,
   maxHealth: 100,
   levelDuration: 30000,
 };
+const PLAY_PADDING_FACTOR = 0.08;
 const SPEED_MULTIPLIER = 0.5;
 const INPUT_SMOOTHING = 0.25;
 const SWIPE_SENSITIVITY = 1.8;
@@ -118,6 +119,7 @@ const touchEl = document.getElementById("touch");
 const warningBanner = document.getElementById("warning");
 const muteButton = document.getElementById("muteButton");
 const droneButtons = document.querySelectorAll(".drone-option");
+const hudStack = document.getElementById("hud-stack");
 
 let lastTime = 0;
 let elapsed = 0;
@@ -147,6 +149,10 @@ let currentFireRate = CONFIG.fireRate;
 const droneImages = new Map();
 const stars = [];
 const STAR_COUNT = 140;
+let playPaddingX = 0;
+let playPaddingY = 0;
+let stackHeightPx = 0;
+let loseThresholdPx = 0;
 
 const lingoSnippets = [
   "DRN SYN OK",
@@ -167,6 +173,10 @@ function resizeCanvas() {
   canvas.width = innerWidth * devicePixelRatio;
   canvas.height = innerHeight * devicePixelRatio;
   ctx.setTransform(devicePixelRatio, 0, 0, devicePixelRatio, 0, 0);
+  playPaddingX = viewWidth * PLAY_PADDING_FACTOR;
+  playPaddingY = viewHeight * PLAY_PADDING_FACTOR;
+  loseThresholdPx = viewHeight * 0.3;
+  stackHeightPx = Math.min(stackHeightPx, viewHeight);
   initStars();
 }
 
@@ -225,9 +235,12 @@ function updateDroneSelectionUI() {
 
 function setPointerPosition(clientX, clientY) {
   const rect = canvas.getBoundingClientRect();
+  const rawX = (clientX - rect.left) / rect.width;
+  const rawY = (clientY - rect.top) / rect.height;
+  const bounds = getPlayBounds();
   pointerPos = {
-    x: (clientX - rect.left) / rect.width,
-    y: (clientY - rect.top) / rect.height,
+    x: bounds.minX + clamp(rawX, 0, 1) * (bounds.maxX - bounds.minX),
+    y: bounds.minY + clamp(rawY, 0, 1) * (bounds.maxY - bounds.minY),
   };
   touchEl.textContent = `${Math.round(pointerPos.x * 100)},${Math.round(pointerPos.y * 100)}`;
 }
@@ -302,6 +315,30 @@ function activatePowerUp() {
   playPowerUp();
 }
 
+function clamp(value, min, max) {
+  return Math.max(min, Math.min(max, value));
+}
+
+function getPlayBounds() {
+  const minX = playPaddingX / viewWidth;
+  const maxX = (viewWidth - playPaddingX) / viewWidth;
+  const minY = playPaddingY / viewHeight;
+  const floorY = Math.max(playPaddingY, viewHeight - stackHeightPx - playPaddingY);
+  const maxY = Math.max(minY, floorY / viewHeight);
+  return {
+    minX: clamp(minX, 0, 1),
+    maxX: clamp(maxX, 0, 1),
+    minY: clamp(minY, 0, 1),
+    maxY: clamp(maxY, 0, 1),
+  };
+}
+
+function constrainPlayerToBounds() {
+  const bounds = getPlayBounds();
+  player.x = clamp(player.x, bounds.minX, bounds.maxX);
+  player.y = clamp(player.y, bounds.minY, bounds.maxY);
+}
+
 function updatePlayer(dt) {
   if (!pointerActive) return;
   smoothedPointerPos.x += (pointerPos.x - smoothedPointerPos.x) * INPUT_SMOOTHING;
@@ -318,8 +355,7 @@ function updatePlayer(dt) {
   player.vy = Math.max(-maxSpeed, Math.min(maxSpeed, player.vy));
   player.x += player.vx * dt;
   player.y += player.vy * dt;
-  player.x = Math.max(0.08, Math.min(0.92, player.x));
-  player.y = Math.max(0.1, Math.min(0.9, player.y));
+  constrainPlayerToBounds();
 }
 
 function updateEntities(dt, now) {
@@ -336,7 +372,16 @@ function updateEntities(dt, now) {
   obstacles.forEach((obstacle) => {
     obstacle.y += obstacle.speed * dt;
   });
-  obstacles = obstacles.filter((obstacle) => obstacle.y < 1.2);
+  obstacles = obstacles.filter((obstacle) => {
+    const obstacleHeightPx = obstacle.h * viewHeight;
+    const obstacleBottom = obstacle.y * viewHeight + obstacleHeightPx / 2;
+    const stackTop = viewHeight - stackHeightPx;
+    if (obstacleBottom >= stackTop) {
+      stackHeightPx = Math.min(viewHeight, stackHeightPx + obstacleHeightPx);
+      return false;
+    }
+    return obstacle.y < 1.2;
+  });
 
   powerUps.forEach((power) => {
     power.y += power.speed * dt;
@@ -397,6 +442,10 @@ function updateEntities(dt, now) {
   }
 
   fireBullet(now);
+  constrainPlayerToBounds();
+  if (stackHeightPx >= loseThresholdPx) {
+    endGame();
+  }
 }
 
 function updateTelemetry(dt) {
@@ -405,6 +454,10 @@ function updateTelemetry(dt) {
   hudRssi.textContent = Math.round(90 + Math.sin(elapsed / 400) * 8);
   hudSat.textContent = 6 + (level % 3);
   hudPwr.textContent = (1 + level * 0.2).toFixed(1);
+  if (hudStack) {
+    const stackPercent = loseThresholdPx > 0 ? (stackHeightPx / loseThresholdPx) * 100 : 0;
+    hudStack.textContent = `${Math.min(100, Math.round(stackPercent))}%`;
+  }
   if (elapsed % 2000 < 50) {
     hudLingo.textContent = lingoSnippets[Math.floor(Math.random() * lingoSnippets.length)];
   }
@@ -533,6 +586,24 @@ function drawObstacles() {
   ctx.restore();
 }
 
+function drawStack() {
+  if (stackHeightPx <= 0) return;
+  ctx.save();
+  const topY = viewHeight - stackHeightPx;
+  ctx.fillStyle = "#b73a48";
+  ctx.fillRect(0, topY, viewWidth, stackHeightPx);
+  ctx.globalAlpha = 0.2;
+  ctx.fillStyle = "#8f2a35";
+  const blockW = Math.max(22, viewWidth * 0.05);
+  const blockH = Math.max(16, viewHeight * 0.035);
+  for (let y = topY; y < viewHeight; y += blockH + 4) {
+    for (let x = 0; x < viewWidth; x += blockW + 6) {
+      ctx.fillRect(x, y, blockW, blockH);
+    }
+  }
+  ctx.restore();
+}
+
 function drawPowerUps() {
   ctx.save();
   powerUps.forEach((power) => {
@@ -578,6 +649,7 @@ function drawParticles() {
 function render() {
   ctx.clearRect(0, 0, canvas.width, canvas.height);
   drawBackground();
+  drawStack();
   drawBullets();
   drawTargets();
   drawObstacles();
@@ -634,6 +706,7 @@ function startGame() {
   particles = [];
   powerUps = [];
   powerUpActive = false;
+  stackHeightPx = 0;
   pointerActive = true;
   player = { x: 0.5, y: 0.7, vx: 0, vy: 0 };
   startMusic();
@@ -660,8 +733,7 @@ function handlePointerMove(event) {
   setPointerPosition(event.clientX, event.clientY);
   player.x += (pointerPos.x - player.x) * POINTER_FOLLOW_STRENGTH;
   player.y += (pointerPos.y - player.y) * POINTER_FOLLOW_STRENGTH;
-  player.x = Math.max(0.08, Math.min(0.92, player.x));
-  player.y = Math.max(0.1, Math.min(0.9, player.y));
+  constrainPlayerToBounds();
 }
 
 function handlePointerUp() {
