@@ -154,6 +154,7 @@ let powerUps = [];
 let obstacles = [];
 let particles = [];
 let flashes = [];
+let hitPopups = [];
 let lastShotTime = 0;
 let activePowerUps = {
   shield: 0,
@@ -191,7 +192,7 @@ const OBSTACLE_TYPES = {
 };
 
 const COUNTDOWN_SEQUENCE = [
-  { text: "DRONES GOING UP", duration: 900, beep: 520 },
+  { text: "DRONES\nGOING UP", duration: 900, beep: 520 },
   { text: "CLEAR PROP", duration: 900, beep: 640 },
   { text: "3", duration: 800, beep: 520 },
   { text: "2", duration: 800, beep: 520 },
@@ -524,7 +525,8 @@ function fireShot(now) {
   playShoot();
 }
 
-function hitSat(sat) {
+function hitSat(sat, options = {}) {
+  const { popupText } = options;
   combo = Math.max(1, combo + 1);
   const baseScore = sat.type === "red" ? 12 : 8;
   const multiplier = activePowerUps.multiplier > 0 ? 2 : 1;
@@ -534,6 +536,15 @@ function hitSat(sat) {
   }
   triggerShake(0.12, 6);
   flashes.push({ x: sat.x, y: sat.y, z: sat.z, life: 0.15 });
+  if (popupText) {
+    hitPopups.push({
+      x: sat.x,
+      y: sat.y,
+      z: sat.z,
+      life: 0.8,
+      text: popupText,
+    });
+  }
   playHit();
   for (let i = 0; i < 12; i += 1) {
     particles.push({
@@ -638,14 +649,25 @@ function updateEntities(dt, now) {
   });
   flashes = flashes.filter((flash) => flash.life > 0);
 
+  hitPopups.forEach((popup) => {
+    popup.z -= forwardSpeed * dt;
+    popup.life -= dt;
+  });
+  hitPopups = hitPopups.filter((popup) => popup.life > 0);
+
   shots.forEach((shot, shotIndex) => {
     sats.forEach((sat, satIndex) => {
-      if (sat.type !== "red") return;
       const hitWindow = Math.abs(shot.z - sat.z) < SHOT_HIT_WINDOW_Z;
       if (!hitWindow) return;
       const dist2D = Math.hypot(shot.x - sat.x, shot.y - sat.y);
       if (dist2D < sat.radius + shot.radius) {
-        hitSat(sat);
+        if (sat.type === "yellow") {
+          satsCollected += 1;
+          hitSat(sat, { popupText: "+1 SAT" });
+          showRadioCallout("Sat tagged +1");
+        } else {
+          hitSat(sat, { popupText: "TARGET HIT" });
+        }
         shots.splice(shotIndex, 1);
         sats.splice(satIndex, 1);
       }
@@ -665,7 +687,7 @@ function updateEntities(dt, now) {
       if (dist < sat.radius + activeDrone.collisionRadius) {
         if (sat.type === "yellow") {
           satsCollected += 1;
-          hitSat(sat);
+          hitSat(sat, { popupText: "+1 SAT" });
         } else {
           applyDamage(18);
         }
@@ -1227,6 +1249,25 @@ function drawFlashes() {
   ctx.restore();
 }
 
+function drawHitPopups() {
+  ctx.save();
+  hitPopups.forEach((popup) => {
+    if (popup.z <= Z_NEAR * 0.6) return;
+    const projected = projectWorldPoint(popup.x, popup.y, popup.z);
+    const alpha = clamp(popup.life / 0.8, 0, 1);
+    const rise = (1 - alpha) * 12;
+    ctx.globalAlpha = alpha;
+    ctx.fillStyle = "rgba(255, 231, 150, 0.95)";
+    ctx.shadowColor = "rgba(255, 200, 120, 0.7)";
+    ctx.shadowBlur = 8;
+    ctx.font = `700 ${Math.max(12, 14 * projected.scale)}px IBM Plex Mono, Courier New, monospace`;
+    ctx.textAlign = "center";
+    ctx.textBaseline = "middle";
+    ctx.fillText(popup.text, projected.x, projected.y - rise);
+  });
+  ctx.restore();
+}
+
 function drawFogOverlay() {
   const gradient = ctx.createLinearGradient(0, viewHeight * 0.2, 0, viewHeight);
   gradient.addColorStop(0, "rgba(6, 10, 18, 0)");
@@ -1259,7 +1300,16 @@ function drawCountdownOverlay() {
   ctx.shadowColor = "rgba(130, 220, 255, 0.85)";
   ctx.shadowBlur = 18;
   ctx.font = `700 ${fontSize}px IBM Plex Mono, Courier New, monospace`;
-  ctx.fillText(countdownText, 0, 0);
+  if (countdownText.includes("\n")) {
+    const lines = countdownText.split("\n");
+    const lineHeight = fontSize * 0.9;
+    const startY = -((lines.length - 1) * lineHeight) / 2;
+    lines.forEach((line, index) => {
+      ctx.fillText(line, 0, startY + index * lineHeight);
+    });
+  } else {
+    ctx.fillText(countdownText, 0, 0);
+  }
   ctx.restore();
 }
 
@@ -1307,6 +1357,7 @@ function render() {
   drawPowerUps();
   drawParticles();
   drawFlashes();
+  drawHitPopups();
   drawPlayer();
   drawReticle();
   drawFogOverlay();
@@ -1374,6 +1425,7 @@ function startGame() {
   obstacles = [];
   particles = [];
   flashes = [];
+  hitPopups = [];
   activePowerUps = {
     shield: 0,
     multiplier: 0,
