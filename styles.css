@@ -115,6 +115,9 @@ html {
   grid-row: 1;
   justify-self: end;
   align-self: start;
+  text-align: right;
+  max-width: 55vw;
+  white-space: normal;
 }
 
 .hud-brand {
@@ -200,9 +203,7 @@ html {
   gap: 4px;
   margin-top: 24px;
   text-transform: uppercase;
-  position: relative;
-  right: calc(var(--safe-right) + 14px);
-  max-width: calc(100vw - (var(--safe-left) + var(--safe-right) + 28px));
+  max-width: 45vw;
 }
 
 .hud-bottom {
@@ -413,6 +414,20 @@ html {
 @media (max-width: 420px) {
   #hud {
     font-size: 0.9em;
+  }
+
+  .hud-top-right {
+    max-width: 50vw;
+  }
+
+  .hud-right {
+    max-width: 50vw;
+  }
+}
+
+@media (max-width: 360px) {
+  .hud-right .hud-line:last-child {
+    display: none;
   }
 }
 
