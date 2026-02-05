@@ -89,6 +89,20 @@ html {
   grid-column: 1;
   grid-row: 1;
   align-self: start;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.hud-top-center {
+  grid-column: 2;
+  grid-row: 1;
+  justify-self: center;
+  align-self: start;
+  font-size: clamp(13px, 2.5vw, 16px);
+  letter-spacing: 2px;
+  text-transform: uppercase;
+  color: var(--accent);
 }
 
 .hud-top-right {
@@ -96,6 +110,33 @@ html {
   grid-row: 1;
   justify-self: end;
   align-self: start;
+}
+
+.hud-brand {
+  font-size: clamp(12px, 2vw, 14px);
+}
+
+.hud-health {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 11px;
+}
+
+.health-bar {
+  width: 120px;
+  height: 8px;
+  border: 1px solid var(--hud);
+  background: rgba(10, 20, 30, 0.8);
+  border-radius: 999px;
+  overflow: hidden;
+}
+
+#healthFill {
+  height: 100%;
+  width: 100%;
+  background: linear-gradient(90deg, #7fffd4, #ff6b7a);
+  transition: width 0.1s ease-out;
 }
 
 .hud-left {
@@ -159,6 +200,59 @@ html {
   gap: 10px;
   font-size: clamp(14px, 3vw, 18px);
   text-transform: uppercase;
+}
+
+.hud-score-block {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  font-size: clamp(16px, 4vw, 22px);
+  color: var(--accent);
+}
+
+.hud-score-block #score {
+  font-size: clamp(26px, 6vw, 40px);
+  letter-spacing: 2px;
+}
+
+.hud-score-block #combo {
+  font-size: clamp(12px, 3vw, 16px);
+  color: var(--hud-muted);
+}
+
+#dangerGauge {
+  position: absolute;
+  left: calc(12px + var(--safe-left));
+  right: calc(12px + var(--safe-right));
+  bottom: calc(6px + var(--safe-bottom));
+  height: 10px;
+  border: 1px solid var(--danger);
+  background: rgba(40, 10, 14, 0.8);
+  border-radius: 999px;
+  overflow: hidden;
+  pointer-events: none;
+}
+
+#dangerFill {
+  height: 100%;
+  width: 0%;
+  background: linear-gradient(90deg, rgba(255, 107, 122, 0.6), rgba(255, 107, 122, 0.95));
+  transition: width 0.15s ease-out;
+}
+
+#readyPanel {
+  position: absolute;
+  inset: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: clamp(24px, 8vw, 48px);
+  color: var(--accent);
+  letter-spacing: 4px;
+  text-transform: uppercase;
+  background: rgba(7, 11, 18, 0.35);
+  z-index: 2;
+  pointer-events: none;
 }
 
 .hud-line {

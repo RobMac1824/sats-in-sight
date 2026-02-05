@@ -11,7 +11,17 @@
     <canvas id="gameCanvas" aria-label="Sats in Sight"></canvas>
 
     <div id="hud">
-      <div class="hud-top-left">SATS IN SIGHT</div>
+      <div class="hud-top-left">
+        <div class="hud-brand">SATS IN SIGHT</div>
+        <div class="hud-health">
+          <span>HEALTH</span>
+          <div class="health-bar">
+            <div id="healthFill"></div>
+          </div>
+          <span id="healthValue">100</span>
+        </div>
+      </div>
+      <div class="hud-top-center" id="hud-wave">WAVE 1</div>
       <div class="hud-top-right">WFM 98.8 FM LINGOLINGO</div>
       <div class="hud-left">
         <div class="hud-line">RSSI <span id="hud-rssi">99</span></div>
@@ -32,12 +42,20 @@
         <div class="hud-line">LNG-LNG <span class="blink">SYNC</span></div>
       </div>
       <div class="hud-bottom">
-        <div>SCORE <span id="score">0</span></div>
-        <div>HEALTH <span id="health">100</span></div>
-        <div>LEVEL <span id="level">1</span></div>
+        <div class="hud-score-block">
+          <div class="score-label">SCORE</div>
+          <div id="score">0</div>
+          <div id="combo">COMBO x0</div>
+        </div>
         <div>STACK <span id="hud-stack">0%</span></div>
       </div>
     </div>
+
+    <div id="dangerGauge">
+      <div id="dangerFill"></div>
+    </div>
+
+    <div id="readyPanel" class="hidden">READY</div>
 
     <div id="diagnostics" class="hidden">
       <div>FPS: <span id="fps">0</span></div>
@@ -93,6 +111,8 @@
       <div class="screen-inner">
         <h2>more cowbell?</h2>
         <p>Final Score: <span id="finalScore">0</span></p>
+        <p>Final Wave: <span id="finalWave">1</span></p>
+        <p>Final Combo: <span id="finalCombo">0</span></p>
         <div class="leaderboard">
           <h3>Global Top 20</h3>
           <ol id="leaderboardList"></ol>

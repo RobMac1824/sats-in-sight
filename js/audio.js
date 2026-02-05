@@ -84,8 +84,22 @@ export function playShoot() {
 }
 
 export function playHit() {
-  playNoise(0.2, 0.3);
-  playTone(180, 0.2, "square", 0.1);
+  if (STATE.muted) return;
+  ensureContext();
+  const now = STATE.context.currentTime;
+  const boom = STATE.context.createOscillator();
+  const boomGain = STATE.context.createGain();
+  boom.type = "sine";
+  boom.frequency.setValueAtTime(220, now);
+  boom.frequency.exponentialRampToValueAtTime(80, now + 0.18);
+  boomGain.gain.setValueAtTime(0.25, now);
+  boomGain.gain.exponentialRampToValueAtTime(0.001, now + 0.22);
+  boom.connect(boomGain);
+  boomGain.connect(STATE.masterGain);
+  boom.start(now);
+  boom.stop(now + 0.22);
+  playNoise(0.15, 0.35);
+  playTone(160, 0.12, "square", 0.14);
 }
 
 export function playPowerUp() {
