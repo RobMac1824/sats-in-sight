@@ -107,8 +107,6 @@ const lingoSnippets = [
 
 const canvas = document.getElementById("gameCanvas");
 const ctx = canvas.getContext("2d");
-let viewWidth = window.innerWidth;
-let viewHeight = window.innerHeight;
 
 const hudScore = document.getElementById("score");
 const hudCombo = document.getElementById("combo");
@@ -151,6 +149,10 @@ const dangerGauge = document.getElementById("dangerGauge");
 
 const game = {
   state: GAME_STATES.BOOT,
+  viewW: window.innerWidth,
+  viewH: window.innerHeight,
+  dpr: window.devicePixelRatio || 1,
+  hudInset: { top: 0, right: 0, bottom: 0, left: 0 },
 };
 
 let lastTime = 0;
@@ -190,14 +192,12 @@ let shakeTime = 0;
 let shakeDuration = 0;
 let shakeMagnitude = 0;
 let lastWaveCallout = 0;
-let dpr = window.devicePixelRatio || 1;
 let fpsAccumulator = 0;
 let fpsFrames = 0;
 let countdownRemainingMs = 0;
 let countdownStepIndex = 0;
 let countdownText = "";
 let countdownStepDuration = 0;
-let safeAreaInsets = { top: 0, right: 0, bottom: 0, left: 0 };
 
 function triggerShake(duration, magnitude) {
   shakeTime = duration;
@@ -281,25 +281,30 @@ function startWave() {
 }
 
 function resizeCanvas() {
-  const { innerWidth, innerHeight } = window;
-  dpr = window.devicePixelRatio || 1;
-  viewWidth = innerWidth;
-  viewHeight = innerHeight;
-  canvas.width = Math.round(innerWidth * dpr);
-  canvas.height = Math.round(innerHeight * dpr);
-  ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
-  safeAreaInsets = getSafeAreaInsets();
+  const dprValue = Math.min(window.devicePixelRatio || 1, 3);
+  const cssW = Math.floor(canvas.clientWidth);
+  const cssH = Math.floor(canvas.clientHeight);
+  canvas.width = Math.floor(cssW * dprValue);
+  canvas.height = Math.floor(cssH * dprValue);
+  ctx.setTransform(dprValue, 0, 0, dprValue, 0, 0);
+  game.dpr = dprValue;
+  game.viewW = cssW;
+  game.viewH = cssH;
+  game.hudInset = readHudInsets();
   initStars();
 }
 
-function getSafeAreaInsets() {
-  const styles = getComputedStyle(document.documentElement);
-  const parseInset = (value) => Number.parseFloat(value) || 0;
+function readHudInsets() {
+  const el = document.getElementById("app");
+  if (!el) {
+    return { left: 0, right: 0, top: 0, bottom: 0 };
+  }
+  const styles = getComputedStyle(el);
   return {
-    top: parseInset(styles.getPropertyValue("--safe-top")),
-    right: parseInset(styles.getPropertyValue("--safe-right")),
-    bottom: parseInset(styles.getPropertyValue("--safe-bottom")),
-    left: parseInset(styles.getPropertyValue("--safe-left")),
+    left: Number.parseFloat(styles.paddingLeft) || 0,
+    right: Number.parseFloat(styles.paddingRight) || 0,
+    top: Number.parseFloat(styles.paddingTop) || 0,
+    bottom: Number.parseFloat(styles.paddingBottom) || 0,
   };
 }
 
@@ -307,8 +312,8 @@ function initStars() {
   stars.length = 0;
   for (let i = 0; i < STAR_COUNT; i += 1) {
     stars.push({
-      x: Math.random() * viewWidth,
-      y: Math.random() * viewHeight,
+      x: Math.random() * game.viewW,
+      y: Math.random() * game.viewH,
       size: Math.random() * 1.6 + 0.4,
       speed: Math.random() * 8 + 4,
       drift: (Math.random() - 0.5) * 3,
@@ -320,14 +325,14 @@ function updateStars(dt) {
   stars.forEach((star) => {
     star.y += star.speed * dt;
     star.x += star.drift * dt;
-    if (star.y > viewHeight + 4) {
+    if (star.y > game.viewH + 4) {
       star.y = -4;
-      star.x = Math.random() * viewWidth;
+      star.x = Math.random() * game.viewW;
     }
     if (star.x < -4) {
-      star.x = viewWidth + 4;
+      star.x = game.viewW + 4;
     }
-    if (star.x > viewWidth + 4) {
+    if (star.x > game.viewW + 4) {
       star.x = -4;
     }
   });
@@ -364,8 +369,8 @@ function updateDroneSelectionUI() {
 
 function setPointerPosition(clientX, clientY, force = false) {
   const rect = canvas.getBoundingClientRect();
-  const canvasX = (clientX - rect.left) * dpr;
-  const canvasY = (clientY - rect.top) * dpr;
+  const canvasX = clientX - rect.left;
+  const canvasY = clientY - rect.top;
   if (!force && lastPointerCanvas) {
     const dx = Math.abs(canvasX - lastPointerCanvas.x);
     const dy = Math.abs(canvasY - lastPointerCanvas.y);
@@ -432,17 +437,17 @@ function spawnAsteroid(size = "large", position = null) {
   } else {
     const edge = Math.floor(Math.random() * 4);
     if (edge === 0) {
-      x = Math.random() * viewWidth;
+      x = Math.random() * game.viewW;
       y = -margin;
     } else if (edge === 1) {
-      x = viewWidth + margin;
-      y = Math.random() * viewHeight;
+      x = game.viewW + margin;
+      y = Math.random() * game.viewH;
     } else if (edge === 2) {
-      x = Math.random() * viewWidth;
-      y = viewHeight + margin;
+      x = Math.random() * game.viewW;
+      y = game.viewH + margin;
     } else {
       x = -margin;
-      y = Math.random() * viewHeight;
+      y = Math.random() * game.viewH;
     }
   }
   const angle = Math.random() * Math.PI * 2;
@@ -472,10 +477,10 @@ function spawnAsteroid(size = "large", position = null) {
 
 function wrapEntity(entity) {
   const margin = entity.radius + 20;
-  if (entity.x < -margin) entity.x = viewWidth + margin;
-  if (entity.x > viewWidth + margin) entity.x = -margin;
-  if (entity.y < -margin) entity.y = viewHeight + margin;
-  if (entity.y > viewHeight + margin) entity.y = -margin;
+  if (entity.x < -margin) entity.x = game.viewW + margin;
+  if (entity.x > game.viewW + margin) entity.x = -margin;
+  if (entity.y < -margin) entity.y = game.viewH + margin;
+  if (entity.y > game.viewH + margin) entity.y = -margin;
 }
 
 function fireShot(now) {
@@ -592,8 +597,8 @@ function applyDamage(amount) {
 }
 
 function updatePlayer(dt) {
-  const centerX = viewWidth * 0.5;
-  const centerY = viewHeight * 0.55;
+  const centerX = game.viewW * 0.5;
+  const centerY = game.viewH * 0.55;
   const accelBase =
     activeDrone.accel *
     (IS_COARSE_POINTER ? MOBILE_ACCEL_MULTIPLIER : 1) *
@@ -615,11 +620,12 @@ function updatePlayer(dt) {
   }
   player.x += player.vx * dt;
   player.y += player.vy * dt;
+  const inset = game.hudInset || { top: 0, right: 0, bottom: 0, left: 0 };
   const padding = 26;
-  const minX = safeAreaInsets.left + padding;
-  const maxX = viewWidth - safeAreaInsets.right - padding;
-  const minY = safeAreaInsets.top + padding;
-  const maxY = viewHeight - safeAreaInsets.bottom - padding;
+  const minX = inset.left + padding;
+  const maxX = game.viewW - inset.right - padding;
+  const minY = inset.top + padding;
+  const maxY = game.viewH - inset.bottom - padding;
   player.x = clamp(player.x, minX, maxX);
   player.y = clamp(player.y, minY, maxY);
 
@@ -643,9 +649,9 @@ function updateEntities(dt, now) {
     (shot) =>
       shot.life > 0 &&
       shot.x > -40 &&
-      shot.x < viewWidth + 40 &&
+      shot.x < game.viewW + 40 &&
       shot.y > -40 &&
-      shot.y < viewHeight + 40,
+      shot.y < game.viewH + 40,
   );
 
   asteroids.forEach((asteroid) => {
@@ -780,7 +786,7 @@ function update(dt, now) {
 
 function drawBackground() {
   ctx.fillStyle = "#060a12";
-  ctx.fillRect(0, 0, viewWidth, viewHeight);
+  ctx.fillRect(0, 0, game.viewW, game.viewH);
   ctx.save();
   stars.forEach((star) => {
     ctx.globalAlpha = 0.25 + (star.size / 2) * 0.4;
@@ -978,10 +984,11 @@ function drawHitPopups() {
 
 function drawCountdownOverlay() {
   if (game.state !== GAME_STATES.COUNTDOWN || !countdownText) return;
-  const safeWidth = viewWidth - safeAreaInsets.left - safeAreaInsets.right;
-  const safeHeight = viewHeight - safeAreaInsets.top - safeAreaInsets.bottom;
-  const centerX = safeAreaInsets.left + safeWidth * 0.5;
-  const centerY = safeAreaInsets.top + safeHeight * 0.5;
+  const inset = game.hudInset || { top: 0, right: 0, bottom: 0, left: 0 };
+  const safeWidth = game.viewW - inset.left - inset.right;
+  const safeHeight = game.viewH - inset.top - inset.bottom;
+  const centerX = inset.left + safeWidth * 0.5;
+  const centerY = inset.top + safeHeight * 0.5;
   const progress = clamp(
     1 - countdownRemainingMs / Math.max(1, countdownStepDuration),
     0,
@@ -989,7 +996,7 @@ function drawCountdownOverlay() {
   );
   const alpha = Math.sin(Math.PI * progress);
   const scale = 0.92 + 0.1 * Math.sin(Math.PI * progress);
-  const fontSize = Math.min(viewWidth, viewHeight) * 0.14;
+  const fontSize = Math.min(game.viewW, game.viewH) * 0.14;
   ctx.save();
   ctx.globalAlpha = alpha;
   ctx.translate(centerX, centerY);
@@ -1013,8 +1020,20 @@ function drawCountdownOverlay() {
   ctx.restore();
 }
 
+function drawHudDebugRuler() {
+  const inset = game.hudInset || { top: 0, right: 0, bottom: 0, left: 0 };
+  const xRight = game.viewW - 1 - inset.right;
+  ctx.save();
+  ctx.strokeStyle = "rgba(255,0,0,0.6)";
+  ctx.beginPath();
+  ctx.moveTo(xRight, 0);
+  ctx.lineTo(xRight, game.viewH);
+  ctx.stroke();
+  ctx.restore();
+}
+
 function render() {
-  ctx.clearRect(0, 0, canvas.width, canvas.height);
+  ctx.clearRect(0, 0, game.viewW, game.viewH);
   ctx.save();
   if (shakeTime > 0) {
     const intensity = shakeDuration ? shakeTime / shakeDuration : 0;
@@ -1033,6 +1052,7 @@ function render() {
   drawPlayer();
   drawCountdownOverlay();
   ctx.restore();
+  drawHudDebugRuler();
 }
 
 function loop(timestamp) {
@@ -1102,8 +1122,8 @@ function startGame() {
   stickOffset = { x: 0, y: 0 };
   stickVector = { x: 0, y: 0 };
   player = {
-    x: viewWidth * 0.5,
-    y: viewHeight * 0.55,
+    x: game.viewW * 0.5,
+    y: game.viewH * 0.55,
     vx: 0,
     vy: 0,
     angle: -Math.PI / 2,
