@@ -16,8 +16,8 @@ import {
 } from "./supabase.js";
 
 const CONFIG = {
-  fov: 280,
-  nearZ: 2.4,
+  fov: 230,
+  nearZ: 4.8,
   forwardSpeed: 28,
   bulletSpeed: 48,
   fireRate: 240,
@@ -37,6 +37,9 @@ const INPUT_ACCEL = 0.4;
 const POINTER_FOLLOW_STRENGTH = 0.35;
 
 const DRONE_STORAGE_KEY = "sats_drone_skin";
+const PLAYER_SCALE = 0.02;
+const PLAYER_BASE_SIZE = 18;
+const Z_NEAR = CONFIG.nearZ;
 const GAME_STATES = {
   BOOT: "BOOT",
   START: "START",
@@ -69,22 +72,6 @@ const DRONE_OPTIONS = [
     accel: 0.46,
     maxSpeed: 6.5,
     collisionRadius: 0.26,
-  },
-  {
-    id: "mapper",
-    name: "Mapper",
-    image: "assets/drones/mapper.svg",
-    accel: 0.38,
-    maxSpeed: 5.6,
-    collisionRadius: 0.3,
-  },
-  {
-    id: "delivery",
-    name: "Delivery",
-    image: "assets/drones/delivery.svg",
-    accel: 0.36,
-    maxSpeed: 5.2,
-    collisionRadius: 0.32,
   },
   {
     id: "heavy-lift",
@@ -320,7 +307,11 @@ function getDroneById(id) {
 
 function setActiveDrone(id) {
   activeDroneId = id;
-  activeDrone = getDroneById(id);
+  const baseDrone = getDroneById(id);
+  activeDrone = {
+    ...baseDrone,
+    collisionRadius: baseDrone.collisionRadius * PLAYER_SCALE,
+  };
   currentFireRate = CONFIG.fireRate;
   maxHealth = CONFIG.maxHealth;
 }
@@ -419,14 +410,14 @@ function spawnObstacle() {
   if (roll < 0.45) {
     const driftX = (Math.random() - 0.5) * safeHalfW * 0.4;
     const driftY = (Math.random() - 0.5) * safeHalfH * 0.4;
-    const innerRadius = Math.min(safeHalfW, safeHalfH) * 0.55;
+    const innerRadius = Math.min(safeHalfW, safeHalfH) * 0.38;
     obstacles.push({
       type: OBSTACLE_TYPES.RING_GATE,
       x: driftX,
       y: driftY,
       z,
       innerRadius,
-      thickness: innerRadius * 0.35,
+      thickness: innerRadius * 0.24,
     });
     return;
   }
@@ -480,8 +471,8 @@ function fireShot(now) {
   shots.push({
     x: player.x,
     y: player.y,
-    z: CONFIG.nearZ,
-    radius: 0.15,
+    z: Z_NEAR,
+    radius: 0.06,
   });
   lastShotTime = now;
   playShoot();
@@ -617,14 +608,14 @@ function updateEntities(dt, now) {
   });
 
   sats.forEach((sat, satIndex) => {
-    if (sat.z < CONFIG.nearZ + 0.4 && !sat.nearMissed && sat.type === "red") {
+    if (sat.z < Z_NEAR + 0.4 && !sat.nearMissed && sat.type === "red") {
       const dist = Math.hypot(sat.x - player.x, sat.y - player.y);
       if (dist < activeDrone.collisionRadius * 1.8) {
         showRadioCallout("Lingo Lingo – Near miss");
         sat.nearMissed = true;
       }
     }
-    if (sat.z < CONFIG.nearZ) {
+    if (sat.z < Z_NEAR) {
       const dist = Math.hypot(sat.x - player.x, sat.y - player.y, sat.z);
       if (dist < sat.radius + activeDrone.collisionRadius) {
         if (sat.type === "yellow") {
@@ -633,34 +624,32 @@ function updateEntities(dt, now) {
         } else {
           applyDamage(18);
         }
-        sats.splice(satIndex, 1);
-      } else if (sat.z < -2) {
-        sats.splice(satIndex, 1);
-        if (sat.type === "red") {
-          resetCombo();
-        }
+      } else if (sat.type === "red") {
+        resetCombo();
       }
+      sats.splice(satIndex, 1);
     }
   });
 
   powerUps.forEach((power, powerIndex) => {
-    if (power.z < CONFIG.nearZ) {
+    if (power.z < Z_NEAR) {
       const dist = Math.hypot(power.x - player.x, power.y - player.y, power.z);
       if (dist < power.radius + activeDrone.collisionRadius) {
-        powerUps.splice(powerIndex, 1);
         activatePowerUp(power.type);
-      } else if (power.z < -2) {
-        powerUps.splice(powerIndex, 1);
       }
+      powerUps.splice(powerIndex, 1);
     }
   });
 
   obstacles.forEach((obstacle, obstacleIndex) => {
-    if (obstacle.z < CONFIG.nearZ) {
+    if (obstacle.z < Z_NEAR) {
       const playerRadius = activeDrone.collisionRadius;
       if (obstacle.type === OBSTACLE_TYPES.RING_GATE) {
         const dist = Math.hypot(player.x - obstacle.x, player.y - obstacle.y);
-        if (dist > obstacle.innerRadius - playerRadius) {
+        if (dist <= obstacle.innerRadius - playerRadius) {
+          score += 15 + combo * 2;
+          combo = Math.max(1, combo + 1);
+        } else {
           applyDamage(22);
         }
       } else {
@@ -673,8 +662,6 @@ function updateEntities(dt, now) {
           applyDamage(20);
         }
       }
-      obstacles.splice(obstacleIndex, 1);
-    } else if (obstacle.z < -2) {
       obstacles.splice(obstacleIndex, 1);
     }
   });
@@ -757,7 +744,7 @@ function update(dt, now) {
 function projectPoint(x, y, z) {
   const centerX = viewWidth * 0.5;
   const centerY = viewHeight * 0.5;
-  const safeZ = Math.max(CONFIG.nearZ, z);
+  const safeZ = Math.max(Z_NEAR, z);
   const scale = CONFIG.fov / safeZ;
   return {
     x: centerX + x * scale,
@@ -807,7 +794,7 @@ function drawSpeedLines() {
     ctx.lineWidth = 1;
     ctx.beginPath();
     ctx.moveTo(projected.x, projected.y);
-    ctx.lineTo(projected.x - dx * 0.12, projected.y - dy * 0.12);
+    ctx.lineTo(projected.x - dx * 0.2, projected.y - dy * 0.2);
     ctx.stroke();
   });
   ctx.restore();
@@ -876,6 +863,16 @@ function drawTunnel() {
     ctx.lineTo(p4.x, p4.y);
     ctx.closePath();
     ctx.stroke();
+
+    ctx.strokeStyle = `rgba(180, 245, 255, ${0.12 + (1 - fog) * 0.25})`;
+    ctx.lineWidth = 1.6;
+    ctx.beginPath();
+    ctx.moveTo(p1.x, p1.y);
+    ctx.lineTo(p2.x, p2.y);
+    ctx.lineTo(p3.x, p3.y);
+    ctx.lineTo(p4.x, p4.y);
+    ctx.closePath();
+    ctx.stroke();
   }
 
   const edges = [
@@ -902,7 +899,7 @@ function drawPlayer() {
   ctx.save();
   const projected = projectPoint(0, 0, 6);
   const img = droneImages.get(activeDroneId);
-  const size = 18 * projected.scale;
+  const size = PLAYER_BASE_SIZE * PLAYER_SCALE * projected.scale;
   if (img && img.complete) {
     ctx.globalAlpha = 0.95;
     ctx.drawImage(img, projected.x - size / 2, projected.y - size / 2, size, size);
@@ -992,7 +989,7 @@ function drawMine(projected, size, fog) {
 function drawSats() {
   ctx.save();
   sats.forEach((sat) => {
-    if (sat.z <= CONFIG.nearZ * 0.6) return;
+    if (sat.z <= Z_NEAR * 0.6) return;
     const projected = projectWorldPoint(sat.x, sat.y, sat.z);
     const fog = getFogAlpha(sat.z);
     const size = Math.max(10, 22 * projected.scale);
@@ -1070,7 +1067,7 @@ function drawBar(obstacle) {
 function drawObstacles() {
   ctx.save();
   obstacles.forEach((obstacle) => {
-    if (obstacle.z <= CONFIG.nearZ * 0.7) return;
+    if (obstacle.z <= Z_NEAR * 0.7) return;
     if (obstacle.type === OBSTACLE_TYPES.RING_GATE) {
       drawRingGate(obstacle);
     } else if (obstacle.type === OBSTACLE_TYPES.WALL_PANEL) {
@@ -1114,14 +1111,24 @@ function drawPowerUps() {
 
 function drawShots() {
   ctx.save();
-  ctx.strokeStyle = "#9fd8ff";
-  ctx.lineWidth = 2;
   shots.forEach((shot) => {
-    if (shot.z <= CONFIG.nearZ * 0.6) return;
+    if (shot.z <= Z_NEAR * 0.6) return;
     const projected = projectWorldPoint(shot.x, shot.y, shot.z);
+    const length = 22 * projected.scale;
+    ctx.strokeStyle = "rgba(120, 245, 255, 0.9)";
+    ctx.lineWidth = 1.2;
+    ctx.shadowColor = "rgba(120, 245, 255, 0.6)";
+    ctx.shadowBlur = 8;
     ctx.beginPath();
     ctx.moveTo(projected.x, projected.y);
-    ctx.lineTo(projected.x, projected.y - 12 * projected.scale);
+    ctx.lineTo(projected.x, projected.y - length);
+    ctx.stroke();
+    ctx.strokeStyle = "rgba(210, 255, 255, 0.95)";
+    ctx.lineWidth = 0.6;
+    ctx.shadowBlur = 2;
+    ctx.beginPath();
+    ctx.moveTo(projected.x, projected.y);
+    ctx.lineTo(projected.x, projected.y - length * 0.8);
     ctx.stroke();
   });
   ctx.restore();
@@ -1130,7 +1137,7 @@ function drawShots() {
 function drawParticles() {
   ctx.save();
   particles.forEach((particle) => {
-    if (particle.z <= CONFIG.nearZ * 0.6) return;
+    if (particle.z <= Z_NEAR * 0.6) return;
     const projected = projectWorldPoint(particle.x, particle.y, particle.z);
     ctx.fillStyle = `rgba(194, 245, 255, ${particle.life})`;
     ctx.beginPath();
@@ -1143,7 +1150,7 @@ function drawParticles() {
 function drawFlashes() {
   ctx.save();
   flashes.forEach((flash) => {
-    if (flash.z <= CONFIG.nearZ * 0.6) return;
+    if (flash.z <= Z_NEAR * 0.6) return;
     const projected = projectWorldPoint(flash.x, flash.y, flash.z);
     const alpha = Math.max(0, flash.life / 0.15);
     ctx.fillStyle = `rgba(255, 245, 200, ${alpha})`;
