@@ -25,9 +25,9 @@ const CONFIG = {
   obstacleRate: 0.005,
   powerUpRate: 0.002,
   fireRate: 240,
-  powerUpDuration: 5000,
   maxHealth: 100,
-  levelDuration: 30000,
+  waveDuration: 20000,
+  readyDuration: 3000,
 };
 const PLAY_PADDING_FACTOR = 0.08;
 const SPEED_MULTIPLIER = 0.5;
@@ -95,8 +95,11 @@ let viewWidth = window.innerWidth;
 let viewHeight = window.innerHeight;
 
 const hudScore = document.getElementById("score");
-const hudHealth = document.getElementById("health");
-const hudLevel = document.getElementById("level");
+const hudCombo = document.getElementById("combo");
+const hudWave = document.getElementById("hud-wave");
+const healthFill = document.getElementById("healthFill");
+const healthValue = document.getElementById("healthValue");
+const dangerFill = document.getElementById("dangerFill");
 const hudLingo = document.getElementById("hud-lingo");
 const hudAlt = document.getElementById("hud-alt");
 const hudSpd = document.getElementById("hud-spd");
@@ -104,12 +107,15 @@ const hudRssi = document.getElementById("hud-rssi");
 const hudSat = document.getElementById("hud-sat");
 const hudPwr = document.getElementById("hud-pwr");
 const levelCallout = document.getElementById("level-callout");
+const readyPanel = document.getElementById("readyPanel");
 const startScreen = document.getElementById("startScreen");
 const gameOverScreen = document.getElementById("gameOverScreen");
 const startButton = document.getElementById("startButton");
 const restartButton = document.getElementById("restartButton");
 const usernameInput = document.getElementById("username");
 const finalScore = document.getElementById("finalScore");
+const finalWave = document.getElementById("finalWave");
+const finalCombo = document.getElementById("finalCombo");
 const leaderboardList = document.getElementById("leaderboardList");
 const yourBest = document.getElementById("yourBest");
 const diagnosticsToggle = document.getElementById("diagnosticsToggle");
@@ -123,19 +129,28 @@ const hudStack = document.getElementById("hud-stack");
 
 let lastTime = 0;
 let elapsed = 0;
-let level = 1;
+let wave = 1;
+let waveTimer = 0;
+let waveState = "ready";
+let readyTimer = CONFIG.readyDuration;
 let score = 0;
 let health = CONFIG.maxHealth;
 let maxHealth = CONFIG.maxHealth;
+let danger = 0;
+let combo = 0;
 let gameState = "start";
 let bullets = [];
 let targets = [];
 let obstacles = [];
 let particles = [];
+let flashes = [];
 let powerUps = [];
 let lastShotTime = 0;
-let powerUpActive = false;
-let powerUpTimer = 0;
+let activePowerUps = {
+  shield: 0,
+  multiplier: 0,
+  speed: 0,
+};
 let diagnosticsEnabled = false;
 let pointerActive = false;
 let pointerPos = { x: 0, y: 0 };
@@ -153,6 +168,9 @@ let playPaddingX = 0;
 let playPaddingY = 0;
 let stackHeightPx = 0;
 let loseThresholdPx = 0;
+let shakeTime = 0;
+let shakeDuration = 0;
+let shakeMagnitude = 0;
 
 const lingoSnippets = [
   "DRN SYN OK",
@@ -165,6 +183,31 @@ const lingoSnippets = [
   "RSSI GREEN",
   "SIGHTLINE SET",
 ];
+
+function triggerShake(duration, magnitude) {
+  shakeTime = duration;
+  shakeDuration = duration;
+  shakeMagnitude = magnitude;
+}
+
+function showWaveCallout() {
+  levelCallout.textContent = `WAVE ${wave}`;
+  levelCallout.classList.remove("hidden");
+  setTimeout(() => levelCallout.classList.add("hidden"), 1200);
+}
+
+function startReadyPhase() {
+  waveState = "ready";
+  readyTimer = CONFIG.readyDuration;
+  readyPanel.classList.remove("hidden");
+}
+
+function startWave() {
+  waveState = "active";
+  waveTimer = 0;
+  readyPanel.classList.add("hidden");
+  showWaveCallout();
+}
 
 function resizeCanvas() {
   const { innerWidth, innerHeight, devicePixelRatio } = window;
@@ -250,7 +293,7 @@ function spawnTarget() {
     x: Math.random(),
     y: -0.1,
     r: 0.04,
-    speed: (CONFIG.targetSpeed + level * 0.075) * SPEED_MULTIPLIER,
+    speed: (CONFIG.targetSpeed + wave * 0.08) * SPEED_MULTIPLIER,
   });
 }
 
@@ -260,22 +303,29 @@ function spawnObstacle() {
     y: -0.1,
     w: 0.08,
     h: 0.05,
-    speed: (CONFIG.obstacleSpeed + level * 0.1) * SPEED_MULTIPLIER,
+    speed: (CONFIG.obstacleSpeed + wave * 0.12) * SPEED_MULTIPLIER,
   });
 }
 
 function spawnPowerUp() {
+  const roll = Math.random();
+  let type = "shield";
+  if (roll > 0.7) {
+    type = "multiplier";
+  } else if (roll > 0.45) {
+    type = "speed";
+  }
   powerUps.push({
     x: Math.random(),
     y: -0.1,
     r: 0.035,
     speed: CONFIG.powerUpSpeed * SPEED_MULTIPLIER,
+    type,
   });
 }
 
 function fireBullet(now) {
-  const fireRate = powerUpActive ? currentFireRate / 2 : currentFireRate;
-  if (now - lastShotTime < fireRate) {
+  if (now - lastShotTime < currentFireRate) {
     return;
   }
   bullets.push({
@@ -288,7 +338,12 @@ function fireBullet(now) {
 }
 
 function hitTarget(target) {
-  score += powerUpActive ? 20 : 10;
+  combo = Math.max(1, combo + 1);
+  const baseScore = 10;
+  const multiplier = activePowerUps.multiplier > 0 ? 2 : 1;
+  score += baseScore * combo * multiplier;
+  triggerShake(0.12, 6);
+  flashes.push({ x: target.x, y: target.y, life: 0.15 });
   playHit();
   for (let i = 0; i < 12; i += 1) {
     particles.push({
@@ -301,17 +356,39 @@ function hitTarget(target) {
   }
 }
 
-function hurtPlayer() {
-  health = Math.max(0, health - 20);
+function resetCombo() {
+  combo = 0;
+}
+
+function applyDamage(amount, options = {}) {
+  const { isObstacle = false } = options;
+  if (activePowerUps.shield > 0) {
+    resetCombo();
+    return;
+  }
+  health = Math.max(0, health - amount);
+  if (isObstacle) {
+    danger = Math.min(100, danger + 8);
+    resetCombo();
+  } else {
+    resetCombo();
+  }
   playHit();
   if (health <= 0) {
     endGame();
   }
 }
 
-function activatePowerUp() {
-  powerUpActive = true;
-  powerUpTimer = CONFIG.powerUpDuration;
+function activatePowerUp(type) {
+  if (type === "shield") {
+    activePowerUps.shield = 3000;
+  }
+  if (type === "multiplier") {
+    activePowerUps.multiplier = 5000;
+  }
+  if (type === "speed") {
+    activePowerUps.speed = 3000;
+  }
   playPowerUp();
 }
 
@@ -345,7 +422,8 @@ function updatePlayer(dt) {
   smoothedPointerPos.y += (pointerPos.y - smoothedPointerPos.y) * INPUT_SMOOTHING;
   const dx = smoothedPointerPos.x - player.x;
   const dy = smoothedPointerPos.y - player.y;
-  const speed = CONFIG.playerSpeed * playerSpeedMultiplier * SWIPE_SENSITIVITY;
+  const speedBoost = activePowerUps.speed > 0 ? 1.35 : 1;
+  const speed = CONFIG.playerSpeed * playerSpeedMultiplier * speedBoost * SWIPE_SENSITIVITY;
   const desiredVx = dx * speed;
   const desiredVy = dy * speed;
   player.vx += (desiredVx - player.vx) * INPUT_ACCEL;
@@ -367,7 +445,11 @@ function updateEntities(dt, now) {
   targets.forEach((target) => {
     target.y += target.speed * dt;
   });
+  const missedTargets = targets.filter((target) => target.y >= 1.2).length;
   targets = targets.filter((target) => target.y < 1.2);
+  if (missedTargets > 0) {
+    resetCombo();
+  }
 
   obstacles.forEach((obstacle) => {
     obstacle.y += obstacle.speed * dt;
@@ -394,6 +476,10 @@ function updateEntities(dt, now) {
     particle.life -= dt * 1.1;
   });
   particles = particles.filter((particle) => particle.life > 0);
+  flashes.forEach((flash) => {
+    flash.life -= dt;
+  });
+  flashes = flashes.filter((flash) => flash.life > 0);
 
   bullets.forEach((bullet, bulletIndex) => {
     targets.forEach((target, targetIndex) => {
@@ -412,7 +498,7 @@ function updateEntities(dt, now) {
     const dist = Math.hypot(target.x - player.x, target.y - player.y);
     if (dist < target.r + 0.05) {
       targets.splice(targetIndex, 1);
-      hurtPlayer();
+      applyDamage(20);
     }
   });
 
@@ -422,7 +508,7 @@ function updateEntities(dt, now) {
       Math.abs(obstacle.y - player.y) < obstacle.h / 2 + 0.04
     ) {
       obstacles.splice(obstacleIndex, 1);
-      hurtPlayer();
+      applyDamage(20, { isObstacle: true });
     }
   });
 
@@ -430,16 +516,15 @@ function updateEntities(dt, now) {
     const dist = Math.hypot(power.x - player.x, power.y - player.y);
     if (dist < power.r + 0.04) {
       powerUps.splice(powerIndex, 1);
-      activatePowerUp();
+      activatePowerUp(power.type);
     }
   });
 
-  if (powerUpActive) {
-    powerUpTimer -= dt * 1000;
-    if (powerUpTimer <= 0) {
-      powerUpActive = false;
+  Object.keys(activePowerUps).forEach((key) => {
+    if (activePowerUps[key] > 0) {
+      activePowerUps[key] = Math.max(0, activePowerUps[key] - dt * 1000);
     }
-  }
+  });
 
   fireBullet(now);
   constrainPlayerToBounds();
@@ -450,10 +535,10 @@ function updateEntities(dt, now) {
 
 function updateTelemetry(dt) {
   hudAlt.textContent = Math.round(100 + Math.sin(elapsed / 1000) * 12);
-  hudSpd.textContent = Math.round(40 + level * 3 + Math.cos(elapsed / 700) * 6);
+  hudSpd.textContent = Math.round(40 + wave * 3 + Math.cos(elapsed / 700) * 6);
   hudRssi.textContent = Math.round(90 + Math.sin(elapsed / 400) * 8);
-  hudSat.textContent = 6 + (level % 3);
-  hudPwr.textContent = (1 + level * 0.2).toFixed(1);
+  hudSat.textContent = 6 + (wave % 3);
+  hudPwr.textContent = (1 + wave * 0.2).toFixed(1);
   if (hudStack) {
     const stackPercent = loseThresholdPx > 0 ? (stackHeightPx / loseThresholdPx) * 100 : 0;
     hudStack.textContent = `${Math.min(100, Math.round(stackPercent))}%`;
@@ -461,34 +546,46 @@ function updateTelemetry(dt) {
   if (elapsed % 2000 < 50) {
     hudLingo.textContent = lingoSnippets[Math.floor(Math.random() * lingoSnippets.length)];
   }
-  if (levelCallout.classList.contains("hidden") && elapsed % CONFIG.levelDuration < 100) {
-    levelCallout.textContent = `LEVEL ${level}`;
-    levelCallout.classList.remove("hidden");
-    setTimeout(() => levelCallout.classList.add("hidden"), 1200);
-  }
 }
 
 function update(dt, now) {
   if (gameState !== "playing") return;
   elapsed += dt * 1000;
-  if (Math.random() < CONFIG.spawnRate + level * 0.001) {
-    spawnTarget();
-  }
-  if (Math.random() < CONFIG.obstacleRate + level * 0.0005) {
-    spawnObstacle();
-  }
-  if (Math.random() < CONFIG.powerUpRate) {
-    spawnPowerUp();
-  }
-  if (elapsed > level * CONFIG.levelDuration) {
-    level += 1;
+  if (waveState === "ready") {
+    readyTimer -= dt * 1000;
+    if (readyTimer <= 0) {
+      startWave();
+    }
+  } else {
+    waveTimer += dt * 1000;
+    const targetRate = CONFIG.spawnRate + wave * 0.002;
+    const obstacleRate = CONFIG.obstacleRate + wave * 0.0012;
+    if (Math.random() < targetRate) {
+      spawnTarget();
+    }
+    if (Math.random() < obstacleRate) {
+      spawnObstacle();
+    }
+    if (Math.random() < CONFIG.powerUpRate) {
+      spawnPowerUp();
+    }
+    if (waveTimer >= CONFIG.waveDuration) {
+      wave += 1;
+      startReadyPhase();
+    }
   }
   updatePlayer(dt);
   updateEntities(dt, now);
   updateTelemetry(dt);
   hudScore.textContent = score;
-  hudHealth.textContent = health;
-  hudLevel.textContent = level;
+  hudCombo.textContent = `COMBO x${combo}`;
+  healthValue.textContent = health;
+  healthFill.style.width = `${(health / maxHealth) * 100}%`;
+  hudWave.textContent = `WAVE ${wave}`;
+  dangerFill.style.width = `${danger}%`;
+  if (danger >= 100) {
+    endGame();
+  }
 }
 
 function drawBackground() {
@@ -535,25 +632,41 @@ function drawPlayer() {
   const x = player.x * viewWidth;
   const y = player.y * viewHeight;
   const img = droneImages.get(activeDroneId);
-  const size = powerUpActive ? 46 : 40;
+  const size = 40;
   if (img && img.complete) {
     ctx.globalAlpha = 0.95;
     ctx.drawImage(img, x - size / 2, y - size / 2, size, size);
-    if (powerUpActive) {
-      ctx.strokeStyle = "rgba(194, 245, 255, 0.6)";
-      ctx.lineWidth = 2;
-      ctx.beginPath();
-      ctx.arc(x, y, size * 0.6, 0, Math.PI * 2);
-      ctx.stroke();
-    }
   } else {
-    ctx.fillStyle = powerUpActive ? "#c2f5ff" : "#9fd8ff";
+    ctx.fillStyle = "#9fd8ff";
     ctx.beginPath();
     ctx.moveTo(x, y - 18);
     ctx.lineTo(x - 12, y + 14);
     ctx.lineTo(x + 12, y + 14);
     ctx.closePath();
     ctx.fill();
+  }
+  if (activePowerUps.shield > 0) {
+    ctx.strokeStyle = "rgba(130, 220, 255, 0.8)";
+    ctx.lineWidth = 3;
+    ctx.beginPath();
+    ctx.arc(x, y, size * 0.8, 0, Math.PI * 2);
+    ctx.stroke();
+  }
+  if (activePowerUps.multiplier > 0) {
+    ctx.strokeStyle = "rgba(255, 214, 120, 0.85)";
+    ctx.lineWidth = 2;
+    ctx.beginPath();
+    ctx.arc(x, y, size * 0.95, 0, Math.PI * 2);
+    ctx.stroke();
+  }
+  if (activePowerUps.speed > 0) {
+    ctx.strokeStyle = "rgba(120, 255, 215, 0.7)";
+    ctx.lineWidth = 2;
+    ctx.beginPath();
+    ctx.moveTo(x - size * 0.9, y);
+    ctx.lineTo(x - size * 0.4, y - size * 0.4);
+    ctx.lineTo(x - size * 0.1, y);
+    ctx.stroke();
   }
   ctx.restore();
 }
@@ -606,16 +719,28 @@ function drawStack() {
 
 function drawPowerUps() {
   ctx.save();
+  ctx.textAlign = "center";
+  ctx.textBaseline = "middle";
   powerUps.forEach((power) => {
     const x = power.x * viewWidth;
     const y = power.y * viewHeight;
-    ctx.strokeStyle = "#c2f5ff";
+    let stroke = "#c2f5ff";
+    let text = "S";
+    if (power.type === "multiplier") {
+      stroke = "#ffd678";
+      text = "x2";
+    } else if (power.type === "speed") {
+      stroke = "#78ffd7";
+      text = ">>";
+    }
+    ctx.strokeStyle = stroke;
     ctx.lineWidth = 2;
     ctx.beginPath();
     ctx.arc(x, y, power.r * viewWidth, 0, Math.PI * 2);
     ctx.stroke();
-    ctx.fillStyle = "#c2f5ff";
-    ctx.fillText("+", x - 4, y + 4);
+    ctx.fillStyle = stroke;
+    ctx.font = "12px IBM Plex Mono, Courier New, monospace";
+    ctx.fillText(text, x, y);
   });
   ctx.restore();
 }
@@ -646,8 +771,27 @@ function drawParticles() {
   ctx.restore();
 }
 
+function drawFlashes() {
+  ctx.save();
+  flashes.forEach((flash) => {
+    const alpha = Math.max(0, flash.life / 0.15);
+    ctx.fillStyle = `rgba(255, 245, 200, ${alpha})`;
+    ctx.beginPath();
+    ctx.arc(flash.x * viewWidth, flash.y * viewHeight, 18 * alpha, 0, Math.PI * 2);
+    ctx.fill();
+  });
+  ctx.restore();
+}
+
 function render() {
   ctx.clearRect(0, 0, canvas.width, canvas.height);
+  ctx.save();
+  if (shakeTime > 0) {
+    const intensity = shakeDuration ? shakeTime / shakeDuration : 0;
+    const offsetX = (Math.random() - 0.5) * shakeMagnitude * intensity;
+    const offsetY = (Math.random() - 0.5) * shakeMagnitude * intensity;
+    ctx.translate(offsetX, offsetY);
+  }
   drawBackground();
   drawStack();
   drawBullets();
@@ -655,7 +799,9 @@ function render() {
   drawObstacles();
   drawPowerUps();
   drawParticles();
+  drawFlashes();
   drawPlayer();
+  ctx.restore();
 }
 
 function loop(timestamp) {
@@ -663,6 +809,9 @@ function loop(timestamp) {
   const dt = Math.min(0.033, (now - lastTime) / 1000);
   lastTime = now;
   updateStars(dt);
+  if (shakeTime > 0) {
+    shakeTime = Math.max(0, shakeTime - dt);
+  }
   if (gameState === "playing") {
     update(dt, now);
   }
@@ -698,17 +847,28 @@ function startGame() {
   warningBanner.classList.add("hidden");
   score = 0;
   health = maxHealth;
-  level = 1;
+  danger = 0;
+  combo = 0;
+  wave = 1;
+  waveTimer = 0;
+  waveState = "ready";
+  readyTimer = CONFIG.readyDuration;
   elapsed = 0;
   bullets = [];
   targets = [];
   obstacles = [];
   particles = [];
+  flashes = [];
   powerUps = [];
-  powerUpActive = false;
+  activePowerUps = {
+    shield: 0,
+    multiplier: 0,
+    speed: 0,
+  };
   stackHeightPx = 0;
   pointerActive = true;
   player = { x: 0.5, y: 0.7, vx: 0, vy: 0 };
+  readyPanel.classList.remove("hidden");
   startMusic();
 }
 
@@ -717,6 +877,9 @@ function endGame() {
   stopMusic();
   playGameOver();
   finalScore.textContent = score;
+  finalWave.textContent = wave;
+  finalCombo.textContent = combo;
+  readyPanel.classList.add("hidden");
   gameOverScreen.classList.remove("hidden");
   updateLeaderboard();
 }
