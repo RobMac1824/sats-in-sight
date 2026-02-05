@@ -170,6 +170,12 @@ html {
   color: var(--hud-muted);
   text-transform: uppercase;
   letter-spacing: 1px;
+  transition: color 0.2s ease, text-shadow 0.2s ease;
+}
+
+#hud-callout.active {
+  color: var(--accent);
+  text-shadow: 0 0 12px rgba(180, 240, 255, 0.6);
 }
 
 #level-callout {
