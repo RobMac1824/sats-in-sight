@@ -1,0 +1,80 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
+  <title>Lingo Lingo: BTC Blaster</title>
+  <link rel="stylesheet" href="styles.css" />
+</head>
+<body>
+  <div id="app">
+    <canvas id="gameCanvas" aria-label="Lingo Lingo: BTC Blaster"></canvas>
+
+    <div id="hud">
+      <div class="hud-left">
+        <div class="hud-line">RSSI <span id="hud-rssi">99</span></div>
+        <div class="hud-line">VTX <span id="hud-vtx">WFM</span></div>
+        <div class="hud-line">ARM <span class="blink">ON</span></div>
+        <div class="hud-line">SAT <span id="hud-sat">7</span></div>
+        <div class="hud-line">PWR <span id="hud-pwr">1.2</span>W</div>
+      </div>
+      <div class="hud-center">
+        <div class="hud-title">LINGO LINGO</div>
+        <div id="hud-callout">WFM 98.8 FM Lingolingo</div>
+        <div id="level-callout" class="hidden">LEVEL 1</div>
+      </div>
+      <div class="hud-right">
+        <div class="hud-line">ALT <span id="hud-alt">102</span>m</div>
+        <div class="hud-line">SPD <span id="hud-spd">42</span>kts</div>
+        <div class="hud-line">LINGO <span id="hud-lingo">DRN SYN OK</span></div>
+        <div class="hud-line">LNG-LNG <span class="blink">SYNC</span></div>
+      </div>
+      <div class="hud-bottom">
+        <div>SCORE <span id="score">0</span></div>
+        <div>HEALTH <span id="health">100</span></div>
+        <div>LEVEL <span id="level">1</span></div>
+      </div>
+    </div>
+
+    <div id="diagnostics" class="hidden">
+      <div>FPS: <span id="fps">0</span></div>
+      <div>TOUCH: <span id="touch">0,0</span></div>
+    </div>
+
+    <div id="warning" class="hidden"></div>
+
+    <div id="startScreen" class="screen">
+      <div class="screen-inner">
+        <div class="radio">WFM 98.8 FM Lingolingo</div>
+        <h1>Lingo Lingo: BTC Blaster</h1>
+        <p>Swipe to steer your drone ship. Auto-fire engaged. Dodge obstacles and blast ₿ targets.</p>
+        <label class="input-group">
+          <span>Callsign</span>
+          <input id="username" type="text" maxlength="16" placeholder="LINGO" />
+        </label>
+        <button id="startButton">Start Flight</button>
+        <button id="muteButton" class="secondary">Mute</button>
+      </div>
+    </div>
+
+    <div id="gameOverScreen" class="screen hidden">
+      <div class="screen-inner">
+        <h2>there’s a snake in my boots.</h2>
+        <p>Final Score: <span id="finalScore">0</span></p>
+        <div class="leaderboard">
+          <h3>Global Top 20</h3>
+          <ol id="leaderboardList"></ol>
+          <div class="your-best">Your best: <span id="yourBest">0</span></div>
+        </div>
+        <button id="restartButton">Restart</button>
+      </div>
+    </div>
+
+    <div id="controls">
+      <button id="diagnosticsToggle">Diagnostics</button>
+    </div>
+  </div>
+
+  <script type="module" src="js/main.js"></script>
+</body>
+</html>
