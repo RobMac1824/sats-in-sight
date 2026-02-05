@@ -30,6 +30,11 @@ const CONFIG = {
   levelDuration: 30000,
 };
 const SPEED_MULTIPLIER = 0.5;
+const INPUT_SMOOTHING = 0.25;
+const SWIPE_SENSITIVITY = 1.8;
+const MAX_FOLLOW_SPEED_MULTIPLIER = 1.5;
+const INPUT_ACCEL = 0.4;
+const POINTER_FOLLOW_STRENGTH = 0.35;
 
 const DRONE_STORAGE_KEY = "sats_drone_skin";
 const DRONE_OPTIONS = [
@@ -132,6 +137,7 @@ let powerUpTimer = 0;
 let diagnosticsEnabled = false;
 let pointerActive = false;
 let pointerPos = { x: 0, y: 0 };
+let smoothedPointerPos = { x: 0, y: 0 };
 let player = { x: 0.5, y: 0.7, vx: 0, vy: 0 };
 let activeDroneId = DRONE_OPTIONS[0].id;
 let activeDrone = DRONE_OPTIONS[0];
@@ -298,11 +304,18 @@ function activatePowerUp() {
 
 function updatePlayer(dt) {
   if (!pointerActive) return;
-  const dx = pointerPos.x - player.x;
-  const dy = pointerPos.y - player.y;
-  const speed = CONFIG.playerSpeed * playerSpeedMultiplier;
-  player.vx = dx * speed;
-  player.vy = dy * speed;
+  smoothedPointerPos.x += (pointerPos.x - smoothedPointerPos.x) * INPUT_SMOOTHING;
+  smoothedPointerPos.y += (pointerPos.y - smoothedPointerPos.y) * INPUT_SMOOTHING;
+  const dx = smoothedPointerPos.x - player.x;
+  const dy = smoothedPointerPos.y - player.y;
+  const speed = CONFIG.playerSpeed * playerSpeedMultiplier * SWIPE_SENSITIVITY;
+  const desiredVx = dx * speed;
+  const desiredVy = dy * speed;
+  player.vx += (desiredVx - player.vx) * INPUT_ACCEL;
+  player.vy += (desiredVy - player.vy) * INPUT_ACCEL;
+  const maxSpeed = speed * MAX_FOLLOW_SPEED_MULTIPLIER;
+  player.vx = Math.max(-maxSpeed, Math.min(maxSpeed, player.vx));
+  player.vy = Math.max(-maxSpeed, Math.min(maxSpeed, player.vy));
   player.x += player.vx * dt;
   player.y += player.vy * dt;
   player.x = Math.max(0.08, Math.min(0.92, player.x));
@@ -639,11 +652,16 @@ function handlePointerDown(event) {
   pointerActive = true;
   resumeAudio();
   setPointerPosition(event.clientX, event.clientY);
+  smoothedPointerPos = { ...pointerPos };
 }
 
 function handlePointerMove(event) {
   if (!pointerActive) return;
   setPointerPosition(event.clientX, event.clientY);
+  player.x += (pointerPos.x - player.x) * POINTER_FOLLOW_STRENGTH;
+  player.y += (pointerPos.y - player.y) * POINTER_FOLLOW_STRENGTH;
+  player.x = Math.max(0.08, Math.min(0.92, player.x));
+  player.y = Math.max(0.1, Math.min(0.9, player.y));
 }
 
 function handlePointerUp() {
