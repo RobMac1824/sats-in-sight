@@ -112,6 +112,10 @@ export function playGameOver() {
   playTone(110, 0.5, "sine", 0.15);
 }
 
+export function playCountdownBeep(freq = 520, duration = 0.08, gainValue = 0.16) {
+  playTone(freq, duration, "square", gainValue);
+}
+
 export function resumeAudio() {
   ensureContext();
 }

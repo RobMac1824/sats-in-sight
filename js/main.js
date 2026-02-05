@@ -7,6 +7,7 @@ import {
   playHit,
   playPowerUp,
   playGameOver,
+  playCountdownBeep,
 } from "./audio.js";
 import {
   submitScore,
@@ -37,14 +38,17 @@ const INPUT_ACCEL = 0.4;
 const POINTER_FOLLOW_STRENGTH = 0.35;
 
 const DRONE_STORAGE_KEY = "sats_drone_skin";
-const PLAYER_SCALE = 0.02;
+const PLAYER_SCALE = 0.02 * 1.05;
 const PLAYER_BASE_SIZE = 18;
+const STAR_SCALE = 0.05;
+const COIN_SCALE = 0.05;
 const Z_NEAR = CONFIG.nearZ;
 const GAME_STATES = {
   BOOT: "BOOT",
   START: "START",
   SELECT_DRONE: "SELECT_DRONE",
   READY: "READY",
+  COUNTDOWN: "COUNTDOWN",
   PLAYING: "PLAYING",
   GAMEOVER: "GAMEOVER",
 };
@@ -172,11 +176,25 @@ let lastWaveCallout = 0;
 let dpr = window.devicePixelRatio || 1;
 let fpsAccumulator = 0;
 let fpsFrames = 0;
+let countdownRemainingMs = 0;
+let countdownStepIndex = 0;
+let countdownText = "";
+let countdownStepDuration = 0;
+let safeAreaInsets = { top: 0, right: 0, bottom: 0, left: 0 };
 const OBSTACLE_TYPES = {
   RING_GATE: "RING_GATE",
   WALL_PANEL: "WALL_PANEL",
   BAR: "BAR",
 };
+
+const COUNTDOWN_SEQUENCE = [
+  { text: "DRONES GOING UP", duration: 900, beep: 520 },
+  { text: "CLEAR PROP", duration: 900, beep: 640 },
+  { text: "3", duration: 800, beep: 520 },
+  { text: "2", duration: 800, beep: 520 },
+  { text: "1", duration: 800, beep: 520 },
+  { text: "GO", duration: 500, beep: 820 },
+];
 
 const WORLD = {
   corridorHalfWidth: 6,
@@ -240,6 +258,10 @@ function setState(nextState) {
       dangerGauge.classList.remove("hidden");
       readyPanel.classList.remove("hidden");
       break;
+    case GAME_STATES.COUNTDOWN:
+      hud.classList.remove("hidden");
+      dangerGauge.classList.remove("hidden");
+      break;
     case GAME_STATES.PLAYING:
       hud.classList.remove("hidden");
       dangerGauge.classList.remove("hidden");
@@ -260,6 +282,15 @@ function startReadyPhase() {
   setState(GAME_STATES.READY);
 }
 
+function startCountdownPhase() {
+  countdownStepIndex = 0;
+  countdownText = COUNTDOWN_SEQUENCE[0].text;
+  countdownRemainingMs = COUNTDOWN_SEQUENCE[0].duration;
+  countdownStepDuration = COUNTDOWN_SEQUENCE[0].duration;
+  setState(GAME_STATES.COUNTDOWN);
+  playCountdownBeep(COUNTDOWN_SEQUENCE[0].beep);
+}
+
 function startWave() {
   waveTimer = 0;
   showWaveCallout();
@@ -274,7 +305,19 @@ function resizeCanvas() {
   canvas.width = Math.round(innerWidth * dpr);
   canvas.height = Math.round(innerHeight * dpr);
   ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+  safeAreaInsets = getSafeAreaInsets();
   initStars();
+}
+
+function getSafeAreaInsets() {
+  const styles = getComputedStyle(document.documentElement);
+  const parseInset = (value) => Number.parseFloat(value) || 0;
+  return {
+    top: parseInset(styles.getPropertyValue("--safe-top")),
+    right: parseInset(styles.getPropertyValue("--safe-right")),
+    bottom: parseInset(styles.getPropertyValue("--safe-bottom")),
+    left: parseInset(styles.getPropertyValue("--safe-left")),
+  };
 }
 
 function initStars() {
@@ -284,7 +327,7 @@ function initStars() {
       x: (Math.random() - 0.5) * WORLD.corridorHalfWidth * 6,
       y: (Math.random() - 0.5) * WORLD.corridorHalfHeight * 6,
       z: Math.random() * WORLD.farZ + 10,
-      size: Math.random() * 1.6 + 0.4,
+      size: (Math.random() * 1.6 + 0.4) * STAR_SCALE,
       speed: Math.random() * 0.7 + 0.3,
     });
   }
@@ -692,6 +735,23 @@ function updateTelemetry(dt) {
 }
 
 function update(dt, now) {
+  if (game.state === GAME_STATES.COUNTDOWN) {
+    countdownRemainingMs -= dt * 1000;
+    if (countdownRemainingMs <= 0) {
+      countdownStepIndex += 1;
+      if (countdownStepIndex >= COUNTDOWN_SEQUENCE.length) {
+        setState(GAME_STATES.PLAYING);
+        startWave();
+      } else {
+        const step = COUNTDOWN_SEQUENCE[countdownStepIndex];
+        countdownText = step.text;
+        countdownRemainingMs = step.duration;
+        countdownStepDuration = step.duration;
+        playCountdownBeep(step.beep);
+      }
+    }
+    return;
+  }
   if (game.state === GAME_STATES.READY || game.state === GAME_STATES.PLAYING) {
     elapsed += dt * 1000;
     if (game.state === GAME_STATES.READY) {
@@ -791,7 +851,7 @@ function drawSpeedLines() {
     const dx = projected.x - centerX;
     const dy = projected.y - centerY;
     ctx.strokeStyle = `rgba(120, 200, 255, ${0.1 + intensity * 0.3})`;
-    ctx.lineWidth = 1;
+    ctx.lineWidth = 1 * STAR_SCALE;
     ctx.beginPath();
     ctx.moveTo(projected.x, projected.y);
     ctx.lineTo(projected.x - dx * 0.2, projected.y - dy * 0.2);
@@ -939,26 +999,28 @@ function drawPlayer() {
 }
 
 function drawCoin(projected, size, fog) {
-  const radius = Math.max(6, size * 0.6);
+  const minCoinRadius = dpr >= 2 ? 3 : 2;
+  const radius = Math.max(minCoinRadius, size * 0.6);
   ctx.globalAlpha = 1 - fog * 0.6;
   ctx.fillStyle = "#f5c542";
   ctx.beginPath();
   ctx.arc(projected.x, projected.y, radius, 0, Math.PI * 2);
   ctx.fill();
   ctx.strokeStyle = "#ffea8a";
-  ctx.lineWidth = Math.max(2, radius * 0.2);
+  ctx.lineWidth = Math.max(0.6, radius * 0.2);
   ctx.beginPath();
   ctx.arc(projected.x, projected.y, radius * 0.85, 0, Math.PI * 2);
   ctx.stroke();
   ctx.fillStyle = "#5b3a00";
-  ctx.font = `${Math.max(10, radius * 0.9)}px IBM Plex Mono, Courier New, monospace`;
+  ctx.font = `${Math.max(6, radius * 0.9)}px IBM Plex Mono, Courier New, monospace`;
   ctx.textAlign = "center";
   ctx.textBaseline = "middle";
   ctx.fillText("₿", projected.x, projected.y + radius * 0.05);
 }
 
 function drawMine(projected, size, fog) {
-  const radius = Math.max(7, size * 0.65);
+  const minCoinRadius = dpr >= 2 ? 3 : 2;
+  const radius = Math.max(minCoinRadius, size * 0.65);
   ctx.globalAlpha = 1 - fog * 0.5;
   ctx.fillStyle = "rgba(255, 90, 110, 0.9)";
   ctx.beginPath();
@@ -978,7 +1040,7 @@ function drawMine(projected, size, fog) {
   ctx.closePath();
   ctx.fill();
   ctx.strokeStyle = "rgba(255, 150, 170, 0.9)";
-  ctx.lineWidth = Math.max(1.5, radius * 0.12);
+  ctx.lineWidth = Math.max(0.6, radius * 0.12);
   ctx.stroke();
   ctx.fillStyle = "rgba(255, 240, 250, 0.8)";
   ctx.beginPath();
@@ -992,7 +1054,7 @@ function drawSats() {
     if (sat.z <= Z_NEAR * 0.6) return;
     const projected = projectWorldPoint(sat.x, sat.y, sat.z);
     const fog = getFogAlpha(sat.z);
-    const size = Math.max(10, 22 * projected.scale);
+    const size = 22 * projected.scale * COIN_SCALE;
     if (sat.type === "red") {
       drawMine(projected, size, fog);
     } else {
@@ -1169,6 +1231,34 @@ function drawFogOverlay() {
   ctx.fillRect(0, 0, viewWidth, viewHeight);
 }
 
+function drawCountdownOverlay() {
+  if (game.state !== GAME_STATES.COUNTDOWN || !countdownText) return;
+  const safeWidth = viewWidth - safeAreaInsets.left - safeAreaInsets.right;
+  const safeHeight = viewHeight - safeAreaInsets.top - safeAreaInsets.bottom;
+  const centerX = safeAreaInsets.left + safeWidth * 0.5;
+  const centerY = safeAreaInsets.top + safeHeight * 0.5;
+  const progress = clamp(
+    1 - countdownRemainingMs / Math.max(1, countdownStepDuration),
+    0,
+    1,
+  );
+  const alpha = Math.sin(Math.PI * progress);
+  const scale = 0.92 + 0.1 * Math.sin(Math.PI * progress);
+  const fontSize = Math.min(viewWidth, viewHeight) * 0.14;
+  ctx.save();
+  ctx.globalAlpha = alpha;
+  ctx.translate(centerX, centerY);
+  ctx.scale(scale, scale);
+  ctx.textAlign = "center";
+  ctx.textBaseline = "middle";
+  ctx.fillStyle = "#f2fbff";
+  ctx.shadowColor = "rgba(130, 220, 255, 0.85)";
+  ctx.shadowBlur = 18;
+  ctx.font = `700 ${fontSize}px IBM Plex Mono, Courier New, monospace`;
+  ctx.fillText(countdownText, 0, 0);
+  ctx.restore();
+}
+
 function drawReticle() {
   const centerX = viewWidth * 0.5;
   const centerY = viewHeight * 0.5;
@@ -1216,6 +1306,7 @@ function render() {
   drawPlayer();
   drawReticle();
   drawFogOverlay();
+  drawCountdownOverlay();
   ctx.restore();
 }
 
@@ -1224,7 +1315,9 @@ function loop(timestamp) {
   const safeLastTime = lastTime || now;
   const dt = Math.min(0.033, Math.max(0, (now - safeLastTime) / 1000));
   lastTime = now;
-  updateStars(dt);
+  if (game.state !== GAME_STATES.COUNTDOWN) {
+    updateStars(dt);
+  }
   if (shakeTime > 0) {
     shakeTime = Math.max(0, shakeTime - dt);
   }
@@ -1283,9 +1376,10 @@ function startGame() {
     speed: 0,
   };
   satsCollected = 0;
-  pointerActive = true;
+  pointerActive = false;
   player = { x: 0, y: 0, vx: 0, vy: 0 };
-  startReadyPhase();
+  resumeAudio();
+  startCountdownPhase();
   startMusic();
 }
 
