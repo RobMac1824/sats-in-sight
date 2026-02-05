@@ -16,7 +16,8 @@ import {
 } from "./supabase.js";
 
 const CONFIG = {
-  fov: 360,
+  fov: 280,
+  nearZ: 2.4,
   forwardSpeed: 28,
   bulletSpeed: 48,
   fireRate: 240,
@@ -26,6 +27,7 @@ const CONFIG = {
   spawnRate: 0.02,
   redSatRate: 0.012,
   powerUpRate: 0.0025,
+  obstacleRate: 0.013,
 };
 
 const INPUT_SMOOTHING = 0.25;
@@ -50,7 +52,7 @@ const DRONE_OPTIONS = [
     image: "assets/drones/cinewhoop.svg",
     accel: 0.42,
     maxSpeed: 6,
-    collisionRadius: 0.6,
+    collisionRadius: 0.28,
   },
   {
     id: "racer",
@@ -58,7 +60,7 @@ const DRONE_OPTIONS = [
     image: "assets/drones/racer.svg",
     accel: 0.5,
     maxSpeed: 7,
-    collisionRadius: 0.5,
+    collisionRadius: 0.24,
   },
   {
     id: "freestyle",
@@ -66,7 +68,7 @@ const DRONE_OPTIONS = [
     image: "assets/drones/freestyle.svg",
     accel: 0.46,
     maxSpeed: 6.5,
-    collisionRadius: 0.55,
+    collisionRadius: 0.26,
   },
   {
     id: "mapper",
@@ -74,7 +76,7 @@ const DRONE_OPTIONS = [
     image: "assets/drones/mapper.svg",
     accel: 0.38,
     maxSpeed: 5.6,
-    collisionRadius: 0.65,
+    collisionRadius: 0.3,
   },
   {
     id: "delivery",
@@ -82,7 +84,7 @@ const DRONE_OPTIONS = [
     image: "assets/drones/delivery.svg",
     accel: 0.36,
     maxSpeed: 5.2,
-    collisionRadius: 0.7,
+    collisionRadius: 0.32,
   },
   {
     id: "heavy-lift",
@@ -90,7 +92,7 @@ const DRONE_OPTIONS = [
     image: "assets/drones/heavy-lift.svg",
     accel: 0.34,
     maxSpeed: 4.8,
-    collisionRadius: 0.75,
+    collisionRadius: 0.34,
   },
 ];
 
@@ -155,6 +157,7 @@ let combo = 0;
 let shots = [];
 let sats = [];
 let powerUps = [];
+let obstacles = [];
 let particles = [];
 let flashes = [];
 let lastShotTime = 0;
@@ -182,6 +185,11 @@ let lastWaveCallout = 0;
 let dpr = window.devicePixelRatio || 1;
 let fpsAccumulator = 0;
 let fpsFrames = 0;
+const OBSTACLE_TYPES = {
+  RING_GATE: "RING_GATE",
+  WALL_PANEL: "WALL_PANEL",
+  BAR: "BAR",
+};
 
 const WORLD = {
   corridorHalfWidth: 6,
@@ -361,6 +369,10 @@ function getTunnelScale() {
   return Math.max(0.55, 1 - wave * 0.04);
 }
 
+function getSafeLaneScale() {
+  return Math.max(0.6, 1 - wave * 0.03);
+}
+
 function spawnSat(type) {
   const tunnelScale = getTunnelScale();
   const maxX = WORLD.corridorHalfWidth * tunnelScale * 0.9;
@@ -395,6 +407,72 @@ function spawnPowerUp() {
   });
 }
 
+function spawnObstacle() {
+  const tunnelScale = getTunnelScale();
+  const safeScale = getSafeLaneScale();
+  const halfW = WORLD.corridorHalfWidth * tunnelScale;
+  const halfH = WORLD.corridorHalfHeight * tunnelScale;
+  const safeHalfW = WORLD.corridorHalfWidth * safeScale;
+  const safeHalfH = WORLD.corridorHalfHeight * safeScale;
+  const z = Math.random() * (WORLD.spawnMaxZ - WORLD.spawnMinZ) + WORLD.spawnMinZ;
+  const roll = Math.random();
+  if (roll < 0.45) {
+    const driftX = (Math.random() - 0.5) * safeHalfW * 0.4;
+    const driftY = (Math.random() - 0.5) * safeHalfH * 0.4;
+    const innerRadius = Math.min(safeHalfW, safeHalfH) * 0.55;
+    obstacles.push({
+      type: OBSTACLE_TYPES.RING_GATE,
+      x: driftX,
+      y: driftY,
+      z,
+      innerRadius,
+      thickness: innerRadius * 0.35,
+    });
+    return;
+  }
+  if (roll < 0.75) {
+    const sideRoll = Math.random();
+    const panelDepth = 0.6;
+    let x = 0;
+    let y = 0;
+    let width = halfW * 0.6;
+    let height = halfH * 0.5;
+    if (sideRoll < 0.25) {
+      x = -halfW + width * 0.5;
+    } else if (sideRoll < 0.5) {
+      x = halfW - width * 0.5;
+    } else if (sideRoll < 0.75) {
+      y = -halfH + height * 0.5;
+      width = halfW * 0.5;
+      height = halfH * 0.55;
+    } else {
+      y = halfH - height * 0.5;
+      width = halfW * 0.5;
+      height = halfH * 0.55;
+    }
+    obstacles.push({
+      type: OBSTACLE_TYPES.WALL_PANEL,
+      x,
+      y,
+      z,
+      width,
+      height,
+      depth: panelDepth,
+    });
+    return;
+  }
+  const vertical = Math.random() < 0.5;
+  obstacles.push({
+    type: OBSTACLE_TYPES.BAR,
+    x: vertical ? (Math.random() - 0.5) * safeHalfW * 0.4 : 0,
+    y: vertical ? 0 : (Math.random() - 0.5) * safeHalfH * 0.4,
+    z,
+    width: vertical ? safeHalfW * 0.35 : safeHalfW * 1.25,
+    height: vertical ? safeHalfH * 1.2 : safeHalfH * 0.35,
+    depth: 0.5,
+  });
+}
+
 function fireShot(now) {
   if (now - lastShotTime < currentFireRate) {
     return;
@@ -402,7 +480,7 @@ function fireShot(now) {
   shots.push({
     x: player.x,
     y: player.y,
-    z: 1,
+    z: CONFIG.nearZ,
     radius: 0.15,
   });
   lastShotTime = now;
@@ -445,6 +523,7 @@ function applyDamage(amount) {
   health = Math.max(0, health - amount);
   danger = Math.min(100, danger + 12);
   resetCombo();
+  triggerShake(0.18, 10);
   playHit();
   if (health <= 0) {
     endGame();
@@ -505,6 +584,10 @@ function updateEntities(dt, now) {
     power.z -= forwardSpeed * dt;
   });
 
+  obstacles.forEach((obstacle) => {
+    obstacle.z -= forwardSpeed * dt;
+  });
+
   particles.forEach((particle) => {
     particle.x += particle.vx * dt;
     particle.y += particle.vy * dt;
@@ -534,14 +617,14 @@ function updateEntities(dt, now) {
   });
 
   sats.forEach((sat, satIndex) => {
-    if (sat.z < 0.6 && !sat.nearMissed && sat.type === "red") {
+    if (sat.z < CONFIG.nearZ + 0.4 && !sat.nearMissed && sat.type === "red") {
       const dist = Math.hypot(sat.x - player.x, sat.y - player.y);
       if (dist < activeDrone.collisionRadius * 1.8) {
         showRadioCallout("Lingo Lingo – Near miss");
         sat.nearMissed = true;
       }
     }
-    if (sat.z < 0.8) {
+    if (sat.z < CONFIG.nearZ) {
       const dist = Math.hypot(sat.x - player.x, sat.y - player.y, sat.z);
       if (dist < sat.radius + activeDrone.collisionRadius) {
         if (sat.type === "yellow") {
@@ -561,7 +644,7 @@ function updateEntities(dt, now) {
   });
 
   powerUps.forEach((power, powerIndex) => {
-    if (power.z < 0.8) {
+    if (power.z < CONFIG.nearZ) {
       const dist = Math.hypot(power.x - player.x, power.y - player.y, power.z);
       if (dist < power.radius + activeDrone.collisionRadius) {
         powerUps.splice(powerIndex, 1);
@@ -569,6 +652,30 @@ function updateEntities(dt, now) {
       } else if (power.z < -2) {
         powerUps.splice(powerIndex, 1);
       }
+    }
+  });
+
+  obstacles.forEach((obstacle, obstacleIndex) => {
+    if (obstacle.z < CONFIG.nearZ) {
+      const playerRadius = activeDrone.collisionRadius;
+      if (obstacle.type === OBSTACLE_TYPES.RING_GATE) {
+        const dist = Math.hypot(player.x - obstacle.x, player.y - obstacle.y);
+        if (dist > obstacle.innerRadius - playerRadius) {
+          applyDamage(22);
+        }
+      } else {
+        const halfW = obstacle.width * 0.5;
+        const halfH = obstacle.height * 0.5;
+        const hit =
+          Math.abs(player.x - obstacle.x) < halfW + playerRadius &&
+          Math.abs(player.y - obstacle.y) < halfH + playerRadius;
+        if (hit) {
+          applyDamage(20);
+        }
+      }
+      obstacles.splice(obstacleIndex, 1);
+    } else if (obstacle.z < -2) {
+      obstacles.splice(obstacleIndex, 1);
     }
   });
 
@@ -618,6 +725,9 @@ function update(dt, now) {
       if (Math.random() < CONFIG.powerUpRate) {
         spawnPowerUp();
       }
+      if (Math.random() < CONFIG.obstacleRate * densityBoost) {
+        spawnObstacle();
+      }
       if (waveTimer >= CONFIG.waveDuration) {
         wave += 1;
         startReadyPhase();
@@ -647,7 +757,8 @@ function update(dt, now) {
 function projectPoint(x, y, z) {
   const centerX = viewWidth * 0.5;
   const centerY = viewHeight * 0.5;
-  const scale = CONFIG.fov / z;
+  const safeZ = Math.max(CONFIG.nearZ, z);
+  const scale = CONFIG.fov / safeZ;
   return {
     x: centerX + x * scale,
     y: centerY + y * scale,
@@ -682,20 +793,82 @@ function drawBackground() {
   ctx.restore();
 }
 
+function drawSpeedLines() {
+  const centerX = viewWidth * 0.5;
+  const centerY = viewHeight * 0.5;
+  ctx.save();
+  stars.forEach((star, index) => {
+    if (index % 3 !== 0) return;
+    const projected = projectWorldPoint(star.x, star.y, star.z);
+    const intensity = clamp(1 - star.z / WORLD.farZ, 0, 1);
+    const dx = projected.x - centerX;
+    const dy = projected.y - centerY;
+    ctx.strokeStyle = `rgba(120, 200, 255, ${0.1 + intensity * 0.3})`;
+    ctx.lineWidth = 1;
+    ctx.beginPath();
+    ctx.moveTo(projected.x, projected.y);
+    ctx.lineTo(projected.x - dx * 0.12, projected.y - dy * 0.12);
+    ctx.stroke();
+  });
+  ctx.restore();
+}
+
 function drawTunnel() {
   const tunnelScale = getTunnelScale();
   const halfW = WORLD.corridorHalfWidth * tunnelScale;
   const halfH = WORLD.corridorHalfHeight * tunnelScale;
   ctx.save();
-  ctx.strokeStyle = "rgba(110, 190, 230, 0.15)";
-  ctx.lineWidth = 1;
-
   const step = 6;
   for (let z = 6; z < WORLD.farZ; z += step) {
+    const z2 = Math.min(WORLD.farZ, z + step);
+    const midZ = (z + z2) * 0.5;
+    const fog = getFogAlpha(midZ);
+    const wallAlpha = 0.08 + (1 - fog) * 0.12;
+
     const p1 = projectWorldPoint(-halfW, -halfH, z);
     const p2 = projectWorldPoint(halfW, -halfH, z);
     const p3 = projectWorldPoint(halfW, halfH, z);
     const p4 = projectWorldPoint(-halfW, halfH, z);
+    const p1b = projectWorldPoint(-halfW, -halfH, z2);
+    const p2b = projectWorldPoint(halfW, -halfH, z2);
+    const p3b = projectWorldPoint(halfW, halfH, z2);
+    const p4b = projectWorldPoint(-halfW, halfH, z2);
+
+    ctx.fillStyle = `rgba(18, 34, 54, ${wallAlpha})`;
+    ctx.beginPath();
+    ctx.moveTo(p1.x, p1.y);
+    ctx.lineTo(p4.x, p4.y);
+    ctx.lineTo(p4b.x, p4b.y);
+    ctx.lineTo(p1b.x, p1b.y);
+    ctx.closePath();
+    ctx.fill();
+
+    ctx.beginPath();
+    ctx.moveTo(p2.x, p2.y);
+    ctx.lineTo(p3.x, p3.y);
+    ctx.lineTo(p3b.x, p3b.y);
+    ctx.lineTo(p2b.x, p2b.y);
+    ctx.closePath();
+    ctx.fill();
+
+    ctx.beginPath();
+    ctx.moveTo(p1.x, p1.y);
+    ctx.lineTo(p2.x, p2.y);
+    ctx.lineTo(p2b.x, p2b.y);
+    ctx.lineTo(p1b.x, p1b.y);
+    ctx.closePath();
+    ctx.fill();
+
+    ctx.beginPath();
+    ctx.moveTo(p4.x, p4.y);
+    ctx.lineTo(p3.x, p3.y);
+    ctx.lineTo(p3b.x, p3b.y);
+    ctx.lineTo(p4b.x, p4b.y);
+    ctx.closePath();
+    ctx.fill();
+
+    ctx.strokeStyle = `rgba(120, 200, 240, ${0.18 + (1 - fog) * 0.3})`;
+    ctx.lineWidth = 1;
     ctx.beginPath();
     ctx.moveTo(p1.x, p1.y);
     ctx.lineTo(p2.x, p2.y);
@@ -705,21 +878,22 @@ function drawTunnel() {
     ctx.stroke();
   }
 
-  const wallLines = 6;
-  for (let i = 1; i < wallLines; i += 1) {
-    const ratio = (i / wallLines) * 2 - 1;
-    const x = ratio * halfW;
-    const topStart = projectWorldPoint(x, -halfH, 6);
-    const topEnd = projectWorldPoint(x, -halfH, WORLD.farZ);
-    const bottomStart = projectWorldPoint(x, halfH, 6);
-    const bottomEnd = projectWorldPoint(x, halfH, WORLD.farZ);
+  const edges = [
+    { x1: -halfW, y1: -halfH, x2: -halfW, y2: halfH },
+    { x1: halfW, y1: -halfH, x2: halfW, y2: halfH },
+    { x1: -halfW, y1: -halfH, x2: halfW, y2: -halfH },
+    { x1: -halfW, y1: halfH, x2: halfW, y2: halfH },
+  ];
+  ctx.strokeStyle = "rgba(140, 220, 255, 0.25)";
+  ctx.lineWidth = 1;
+  edges.forEach((edge) => {
+    const start = projectWorldPoint(edge.x1, edge.y1, 6);
+    const end = projectWorldPoint(edge.x2, edge.y2, WORLD.farZ);
     ctx.beginPath();
-    ctx.moveTo(topStart.x, topStart.y);
-    ctx.lineTo(topEnd.x, topEnd.y);
-    ctx.moveTo(bottomStart.x, bottomStart.y);
-    ctx.lineTo(bottomEnd.x, bottomEnd.y);
+    ctx.moveTo(start.x, start.y);
+    ctx.lineTo(end.x, end.y);
     ctx.stroke();
-  }
+  });
 
   ctx.restore();
 }
@@ -728,7 +902,7 @@ function drawPlayer() {
   ctx.save();
   const projected = projectPoint(0, 0, 6);
   const img = droneImages.get(activeDroneId);
-  const size = 36 * projected.scale;
+  const size = 18 * projected.scale;
   if (img && img.complete) {
     ctx.globalAlpha = 0.95;
     ctx.drawImage(img, projected.x - size / 2, projected.y - size / 2, size, size);
@@ -767,19 +941,143 @@ function drawPlayer() {
   ctx.restore();
 }
 
-function drawSats() {
-  ctx.save();
+function drawCoin(projected, size, fog) {
+  const radius = Math.max(6, size * 0.6);
+  ctx.globalAlpha = 1 - fog * 0.6;
+  ctx.fillStyle = "#f5c542";
+  ctx.beginPath();
+  ctx.arc(projected.x, projected.y, radius, 0, Math.PI * 2);
+  ctx.fill();
+  ctx.strokeStyle = "#ffea8a";
+  ctx.lineWidth = Math.max(2, radius * 0.2);
+  ctx.beginPath();
+  ctx.arc(projected.x, projected.y, radius * 0.85, 0, Math.PI * 2);
+  ctx.stroke();
+  ctx.fillStyle = "#5b3a00";
+  ctx.font = `${Math.max(10, radius * 0.9)}px IBM Plex Mono, Courier New, monospace`;
   ctx.textAlign = "center";
   ctx.textBaseline = "middle";
+  ctx.fillText("₿", projected.x, projected.y + radius * 0.05);
+}
+
+function drawMine(projected, size, fog) {
+  const radius = Math.max(7, size * 0.65);
+  ctx.globalAlpha = 1 - fog * 0.5;
+  ctx.fillStyle = "rgba(255, 90, 110, 0.9)";
+  ctx.beginPath();
+  for (let i = 0; i < 4; i += 1) {
+    const angle = (Math.PI / 2) * i;
+    const outerX = projected.x + Math.cos(angle) * radius;
+    const outerY = projected.y + Math.sin(angle) * radius;
+    const innerX = projected.x + Math.cos(angle + Math.PI / 4) * radius * 0.45;
+    const innerY = projected.y + Math.sin(angle + Math.PI / 4) * radius * 0.45;
+    if (i === 0) {
+      ctx.moveTo(outerX, outerY);
+    } else {
+      ctx.lineTo(outerX, outerY);
+    }
+    ctx.lineTo(innerX, innerY);
+  }
+  ctx.closePath();
+  ctx.fill();
+  ctx.strokeStyle = "rgba(255, 150, 170, 0.9)";
+  ctx.lineWidth = Math.max(1.5, radius * 0.12);
+  ctx.stroke();
+  ctx.fillStyle = "rgba(255, 240, 250, 0.8)";
+  ctx.beginPath();
+  ctx.arc(projected.x, projected.y, radius * 0.25, 0, Math.PI * 2);
+  ctx.fill();
+}
+
+function drawSats() {
+  ctx.save();
   sats.forEach((sat) => {
-    if (sat.z <= 0.2) return;
+    if (sat.z <= CONFIG.nearZ * 0.6) return;
     const projected = projectWorldPoint(sat.x, sat.y, sat.z);
     const fog = getFogAlpha(sat.z);
-    const size = 22 * projected.scale;
-    ctx.globalAlpha = 1 - fog * 0.7;
-    ctx.fillStyle = sat.type === "red" ? "#ff6b7a" : "#ffd84a";
-    ctx.font = `${size}px IBM Plex Mono, Courier New, monospace`;
-    ctx.fillText("●", projected.x, projected.y);
+    const size = Math.max(10, 22 * projected.scale);
+    if (sat.type === "red") {
+      drawMine(projected, size, fog);
+    } else {
+      drawCoin(projected, size, fog);
+    }
+  });
+  ctx.restore();
+}
+
+function drawRingGate(obstacle) {
+  const projected = projectWorldPoint(obstacle.x, obstacle.y, obstacle.z);
+  const fog = getFogAlpha(obstacle.z);
+  const innerRadius = obstacle.innerRadius * projected.scale;
+  const outerRadius = (obstacle.innerRadius + obstacle.thickness) * projected.scale;
+  ctx.globalAlpha = 1 - fog * 0.7;
+  ctx.strokeStyle = "rgba(90, 200, 255, 0.7)";
+  ctx.lineWidth = Math.max(2, outerRadius - innerRadius);
+  ctx.beginPath();
+  ctx.arc(projected.x, projected.y, (innerRadius + outerRadius) * 0.5, 0, Math.PI * 2);
+  ctx.stroke();
+  ctx.strokeStyle = "rgba(200, 240, 255, 0.9)";
+  ctx.lineWidth = Math.max(1, (outerRadius - innerRadius) * 0.4);
+  ctx.beginPath();
+  ctx.arc(projected.x, projected.y, innerRadius * 1.05, 0, Math.PI * 2);
+  ctx.stroke();
+}
+
+function drawPanel(obstacle) {
+  const fog = getFogAlpha(obstacle.z);
+  const halfW = obstacle.width * 0.5;
+  const halfH = obstacle.height * 0.5;
+  const p1 = projectWorldPoint(obstacle.x - halfW, obstacle.y - halfH, obstacle.z);
+  const p2 = projectWorldPoint(obstacle.x + halfW, obstacle.y - halfH, obstacle.z);
+  const p3 = projectWorldPoint(obstacle.x + halfW, obstacle.y + halfH, obstacle.z);
+  const p4 = projectWorldPoint(obstacle.x - halfW, obstacle.y + halfH, obstacle.z);
+  ctx.globalAlpha = 1 - fog * 0.6;
+  ctx.fillStyle = "rgba(30, 120, 180, 0.55)";
+  ctx.beginPath();
+  ctx.moveTo(p1.x, p1.y);
+  ctx.lineTo(p2.x, p2.y);
+  ctx.lineTo(p3.x, p3.y);
+  ctx.lineTo(p4.x, p4.y);
+  ctx.closePath();
+  ctx.fill();
+  ctx.strokeStyle = "rgba(170, 230, 255, 0.85)";
+  ctx.lineWidth = Math.max(1, 2 * p1.scale);
+  ctx.stroke();
+}
+
+function drawBar(obstacle) {
+  const fog = getFogAlpha(obstacle.z);
+  const halfW = obstacle.width * 0.5;
+  const halfH = obstacle.height * 0.5;
+  const p1 = projectWorldPoint(obstacle.x - halfW, obstacle.y - halfH, obstacle.z);
+  const p2 = projectWorldPoint(obstacle.x + halfW, obstacle.y - halfH, obstacle.z);
+  const p3 = projectWorldPoint(obstacle.x + halfW, obstacle.y + halfH, obstacle.z);
+  const p4 = projectWorldPoint(obstacle.x - halfW, obstacle.y + halfH, obstacle.z);
+  ctx.globalAlpha = 1 - fog * 0.5;
+  ctx.fillStyle = "rgba(255, 120, 120, 0.6)";
+  ctx.beginPath();
+  ctx.moveTo(p1.x, p1.y);
+  ctx.lineTo(p2.x, p2.y);
+  ctx.lineTo(p3.x, p3.y);
+  ctx.lineTo(p4.x, p4.y);
+  ctx.closePath();
+  ctx.fill();
+  ctx.strokeStyle = "rgba(255, 210, 210, 0.85)";
+  ctx.lineWidth = Math.max(1, 1.5 * p1.scale);
+  ctx.stroke();
+}
+
+function drawObstacles() {
+  ctx.save();
+  obstacles.forEach((obstacle) => {
+    if (obstacle.z <= CONFIG.nearZ * 0.7) return;
+    if (obstacle.type === OBSTACLE_TYPES.RING_GATE) {
+      drawRingGate(obstacle);
+    } else if (obstacle.type === OBSTACLE_TYPES.WALL_PANEL) {
+      drawPanel(obstacle);
+    } else {
+      drawBar(obstacle);
+    }
   });
   ctx.restore();
 }
@@ -819,7 +1117,7 @@ function drawShots() {
   ctx.strokeStyle = "#9fd8ff";
   ctx.lineWidth = 2;
   shots.forEach((shot) => {
-    if (shot.z <= 0.2) return;
+    if (shot.z <= CONFIG.nearZ * 0.6) return;
     const projected = projectWorldPoint(shot.x, shot.y, shot.z);
     ctx.beginPath();
     ctx.moveTo(projected.x, projected.y);
@@ -832,7 +1130,7 @@ function drawShots() {
 function drawParticles() {
   ctx.save();
   particles.forEach((particle) => {
-    if (particle.z <= 0.2) return;
+    if (particle.z <= CONFIG.nearZ * 0.6) return;
     const projected = projectWorldPoint(particle.x, particle.y, particle.z);
     ctx.fillStyle = `rgba(194, 245, 255, ${particle.life})`;
     ctx.beginPath();
@@ -845,7 +1143,7 @@ function drawParticles() {
 function drawFlashes() {
   ctx.save();
   flashes.forEach((flash) => {
-    if (flash.z <= 0.2) return;
+    if (flash.z <= CONFIG.nearZ * 0.6) return;
     const projected = projectWorldPoint(flash.x, flash.y, flash.z);
     const alpha = Math.max(0, flash.life / 0.15);
     ctx.fillStyle = `rgba(255, 245, 200, ${alpha})`;
@@ -864,6 +1162,32 @@ function drawFogOverlay() {
   ctx.fillRect(0, 0, viewWidth, viewHeight);
 }
 
+function drawReticle() {
+  const centerX = viewWidth * 0.5;
+  const centerY = viewHeight * 0.5;
+  ctx.save();
+  ctx.strokeStyle = "rgba(180, 240, 255, 0.8)";
+  ctx.lineWidth = 1.5;
+  ctx.beginPath();
+  ctx.arc(centerX, centerY, 10, 0, Math.PI * 2);
+  ctx.stroke();
+  ctx.beginPath();
+  ctx.moveTo(centerX - 18, centerY);
+  ctx.lineTo(centerX - 6, centerY);
+  ctx.moveTo(centerX + 6, centerY);
+  ctx.lineTo(centerX + 18, centerY);
+  ctx.moveTo(centerX, centerY - 18);
+  ctx.lineTo(centerX, centerY - 6);
+  ctx.moveTo(centerX, centerY + 6);
+  ctx.lineTo(centerX, centerY + 18);
+  ctx.stroke();
+  ctx.fillStyle = "rgba(210, 255, 255, 0.9)";
+  ctx.beginPath();
+  ctx.arc(centerX, centerY, 2.5, 0, Math.PI * 2);
+  ctx.fill();
+  ctx.restore();
+}
+
 function render() {
   ctx.clearRect(0, 0, canvas.width, canvas.height);
   ctx.save();
@@ -874,13 +1198,16 @@ function render() {
     ctx.translate(offsetX, offsetY);
   }
   drawBackground();
+  drawSpeedLines();
   drawTunnel();
+  drawObstacles();
   drawShots();
   drawSats();
   drawPowerUps();
   drawParticles();
   drawFlashes();
   drawPlayer();
+  drawReticle();
   drawFogOverlay();
   ctx.restore();
 }
@@ -940,6 +1267,7 @@ function startGame() {
   shots = [];
   sats = [];
   powerUps = [];
+  obstacles = [];
   particles = [];
   flashes = [];
   activePowerUps = {
