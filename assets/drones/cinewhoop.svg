@@ -1,0 +1,10 @@
+<!-- Source: Tabler Icons (drone) https://tabler-icons.io/i/drone (MIT) -->
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64" fill="none" stroke="#9fd8ff" stroke-width="3" stroke-linecap="round" stroke-linejoin="round">
+  <circle cx="18" cy="18" r="8" />
+  <circle cx="46" cy="18" r="8" />
+  <circle cx="18" cy="46" r="8" />
+  <circle cx="46" cy="46" r="8" />
+  <rect x="24" y="28" width="16" height="8" rx="2" />
+  <path d="M32 20v8" />
+  <path d="M32 36v8" />
+</svg>

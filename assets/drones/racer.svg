@@ -1,0 +1,11 @@
+<!-- Source: Iconoir (drone) https://iconoir.com/ (MIT) -->
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64" fill="none" stroke="#9fd8ff" stroke-width="3" stroke-linecap="round" stroke-linejoin="round">
+  <path d="M16 16h8l4 6h8l4-6h8" />
+  <path d="M24 22v8" />
+  <path d="M40 22v8" />
+  <rect x="24" y="30" width="16" height="10" rx="3" />
+  <circle cx="14" cy="14" r="6" />
+  <circle cx="50" cy="14" r="6" />
+  <circle cx="14" cy="50" r="6" />
+  <circle cx="50" cy="50" r="6" />
+</svg>
