@@ -16,19 +16,71 @@ import {
 } from "./supabase.js";
 
 const CONFIG = {
-  playerSpeed: 6,
-  bulletSpeed: 10,
-  targetSpeed: 2.5,
-  obstacleSpeed: 3.2,
-  powerUpSpeed: 2.2,
-  spawnRate: 0.03,
-  obstacleRate: 0.008,
-  powerUpRate: 0.004,
-  fireRate: 180,
+  playerSpeed: 3,
+  bulletSpeed: 5,
+  targetSpeed: 1.25,
+  obstacleSpeed: 1.6,
+  powerUpSpeed: 1.1,
+  spawnRate: 0.015,
+  obstacleRate: 0.004,
+  powerUpRate: 0.002,
+  fireRate: 360,
   powerUpDuration: 5000,
   maxHealth: 100,
-  levelDuration: 15000,
+  levelDuration: 30000,
 };
+
+const DRONE_STORAGE_KEY = "sats_drone_skin";
+const DRONE_OPTIONS = [
+  {
+    id: "cinewhoop",
+    name: "Cinewhoop",
+    image: "assets/drones/cinewhoop.svg",
+    speedMultiplier: 0.95,
+    fireRateMultiplier: 0.95,
+    healthBonus: 1,
+  },
+  {
+    id: "racer",
+    name: "Racer",
+    image: "assets/drones/racer.svg",
+    speedMultiplier: 1.1,
+    fireRateMultiplier: 1.05,
+    healthBonus: -1,
+  },
+  {
+    id: "freestyle",
+    name: "Freestyle",
+    image: "assets/drones/freestyle.svg",
+    speedMultiplier: 1.05,
+    fireRateMultiplier: 1.1,
+    healthBonus: 0,
+  },
+  {
+    id: "mapper",
+    name: "Mapper",
+    image: "assets/drones/mapper.svg",
+    speedMultiplier: 0.9,
+    fireRateMultiplier: 0.95,
+    healthBonus: 1,
+  },
+  {
+    id: "delivery",
+    name: "Delivery",
+    image: "assets/drones/delivery.svg",
+    speedMultiplier: 0.9,
+    fireRateMultiplier: 0.9,
+    healthBonus: 1,
+  },
+  {
+    id: "heavy-lift",
+    name: "Heavy Lift",
+    image: "assets/drones/heavy-lift.svg",
+    speedMultiplier: 0.85,
+    fireRateMultiplier: 0.9,
+    healthBonus: 1,
+  },
+];
 
 const canvas = document.getElementById("gameCanvas");
 const ctx = canvas.getContext("2d");
@@ -59,12 +111,14 @@ const fpsEl = document.getElementById("fps");
 const touchEl = document.getElementById("touch");
 const warningBanner = document.getElementById("warning");
 const muteButton = document.getElementById("muteButton");
+const droneButtons = document.querySelectorAll(".drone-option");
 
 let lastTime = 0;
 let elapsed = 0;
 let level = 1;
 let score = 0;
 let health = CONFIG.maxHealth;
+let maxHealth = CONFIG.maxHealth;
 let gameState = "start";
 let bullets = [];
 let targets = [];
@@ -78,16 +132,25 @@ let diagnosticsEnabled = false;
 let pointerActive = false;
 let pointerPos = { x: 0, y: 0 };
 let player = { x: 0.5, y: 0.7, vx: 0, vy: 0 };
+let activeDroneId = DRONE_OPTIONS[0].id;
+let activeDrone = DRONE_OPTIONS[0];
+let playerSpeedMultiplier = 1;
+let fireRateMultiplier = 1;
+let currentFireRate = CONFIG.fireRate;
+const droneImages = new Map();
+const stars = [];
+const STAR_COUNT = 140;
 
 const lingoSnippets = [
   "DRN SYN OK",
   "LINGO LOCK",
-  "LNG-LNG BURST",
-  "SAT FIX",
+  "SAT ACQUIRED",
+  "SIGNAL CLEAN",
+  "VTX PUNCH",
   "ARMED",
   "OSD LIVE",
-  "BTC TRACE",
-  "BLASTER HOT",
+  "RSSI GREEN",
+  "SIGHTLINE SET",
 ];
 
 function resizeCanvas() {
@@ -97,6 +160,60 @@ function resizeCanvas() {
   canvas.width = innerWidth * devicePixelRatio;
   canvas.height = innerHeight * devicePixelRatio;
   ctx.setTransform(devicePixelRatio, 0, 0, devicePixelRatio, 0, 0);
+  initStars();
+}
+
+function initStars() {
+  stars.length = 0;
+  for (let i = 0; i < STAR_COUNT; i += 1) {
+    stars.push({
+      x: Math.random() * viewWidth,
+      y: Math.random() * viewHeight,
+      size: Math.random() * 1.6 + 0.4,
+      speed: Math.random() * 18 + 6,
+      alpha: Math.random() * 0.5 + 0.2,
+    });
+  }
+}
+
+function updateStars(dt) {
+  stars.forEach((star) => {
+    star.y += star.speed * dt;
+    if (star.y > viewHeight) {
+      star.y = -2;
+      star.x = Math.random() * viewWidth;
+    }
+  });
+}
+
+function getDroneById(id) {
+  return DRONE_OPTIONS.find((drone) => drone.id === id) || DRONE_OPTIONS[0];
+}
+
+function setActiveDrone(id) {
+  activeDroneId = id;
+  activeDrone = getDroneById(id);
+  playerSpeedMultiplier = activeDrone.speedMultiplier;
+  fireRateMultiplier = activeDrone.fireRateMultiplier;
+  currentFireRate = CONFIG.fireRate / fireRateMultiplier;
+  maxHealth = CONFIG.maxHealth + activeDrone.healthBonus;
+}
+
+function loadDroneImages() {
+  DRONE_OPTIONS.forEach((drone) => {
+    const img = new Image();
+    img.src = drone.image;
+    img.decode()
+      .then(() => droneImages.set(drone.id, img))
+      .catch(() => droneImages.set(drone.id, img));
+  });
+}
+
+function updateDroneSelectionUI() {
+  droneButtons.forEach((button) => {
+    const isSelected = button.dataset.drone === activeDroneId;
+    button.classList.toggle("selected", isSelected);
+  });
 }
 
 function setPointerPosition(clientX, clientY) {
@@ -113,7 +230,7 @@ function spawnTarget() {
     x: Math.random(),
     y: -0.1,
     r: 0.04,
-    speed: CONFIG.targetSpeed + level * 0.3,
+    speed: CONFIG.targetSpeed + level * 0.15,
   });
 }
 
@@ -123,7 +240,7 @@ function spawnObstacle() {
     y: -0.1,
     w: 0.08,
     h: 0.05,
-    speed: CONFIG.obstacleSpeed + level * 0.4,
+    speed: CONFIG.obstacleSpeed + level * 0.2,
   });
 }
 
@@ -137,7 +254,8 @@ function spawnPowerUp() {
 }
 
 function fireBullet(now) {
-  if (now - lastShotTime < (powerUpActive ? CONFIG.fireRate / 2 : CONFIG.fireRate)) {
+  const fireRate = powerUpActive ? currentFireRate / 2 : currentFireRate;
+  if (now - lastShotTime < fireRate) {
     return;
   }
   bullets.push({
@@ -181,8 +299,9 @@ function updatePlayer(dt) {
   if (!pointerActive) return;
   const dx = pointerPos.x - player.x;
   const dy = pointerPos.y - player.y;
-  player.vx = dx * CONFIG.playerSpeed;
-  player.vy = dy * CONFIG.playerSpeed;
+  const speed = CONFIG.playerSpeed * playerSpeedMultiplier;
+  player.vx = dx * speed;
+  player.vy = dy * speed;
   player.x += player.vx * dt;
   player.y += player.vy * dt;
   player.x = Math.max(0.08, Math.min(0.92, player.x));
@@ -285,10 +404,10 @@ function updateTelemetry(dt) {
 function update(dt, now) {
   if (gameState !== "playing") return;
   elapsed += dt * 1000;
-  if (Math.random() < CONFIG.spawnRate + level * 0.002) {
+  if (Math.random() < CONFIG.spawnRate + level * 0.001) {
     spawnTarget();
   }
-  if (Math.random() < CONFIG.obstacleRate + level * 0.001) {
+  if (Math.random() < CONFIG.obstacleRate + level * 0.0005) {
     spawnObstacle();
   }
   if (Math.random() < CONFIG.powerUpRate) {
@@ -306,16 +425,39 @@ function update(dt, now) {
 }
 
 function drawBackground() {
-  ctx.fillStyle = "#05070e";
+  ctx.fillStyle = "#070b12";
   ctx.fillRect(0, 0, viewWidth, viewHeight);
   ctx.save();
-  ctx.strokeStyle = "rgba(80, 120, 160, 0.2)";
+  ctx.fillStyle = "rgba(160, 210, 240, 0.6)";
+  stars.forEach((star) => {
+    ctx.globalAlpha = star.alpha;
+    ctx.beginPath();
+    ctx.arc(star.x, star.y, star.size, 0, Math.PI * 2);
+    ctx.fill();
+  });
+  ctx.globalAlpha = 1;
+  ctx.strokeStyle = "rgba(90, 140, 180, 0.18)";
   ctx.lineWidth = 1;
-  for (let i = 0; i < 10; i += 1) {
-    const y = (i / 10) * viewHeight;
+  const gridLines = 12;
+  for (let i = 0; i < gridLines; i += 1) {
+    const y = (i / gridLines) * viewHeight;
     ctx.beginPath();
     ctx.moveTo(0, y);
     ctx.lineTo(viewWidth, y);
+    ctx.stroke();
+  }
+  for (let i = 0; i < gridLines; i += 1) {
+    const x = (i / gridLines) * viewWidth;
+    ctx.beginPath();
+    ctx.moveTo(x, 0);
+    ctx.lineTo(x, viewHeight);
+    ctx.stroke();
+  }
+  ctx.strokeStyle = "rgba(120, 190, 220, 0.12)";
+  const rings = 3;
+  for (let i = 1; i <= rings; i += 1) {
+    ctx.beginPath();
+    ctx.arc(viewWidth * 0.5, viewHeight * 0.55, (Math.min(viewWidth, viewHeight) / 3) * (i / rings), 0, Math.PI * 2);
     ctx.stroke();
   }
   ctx.restore();
@@ -325,13 +467,27 @@ function drawPlayer() {
   ctx.save();
   const x = player.x * viewWidth;
   const y = player.y * viewHeight;
-  ctx.fillStyle = powerUpActive ? "#ffd84a" : "#9fffe0";
-  ctx.beginPath();
-  ctx.moveTo(x, y - 18);
-  ctx.lineTo(x - 12, y + 14);
-  ctx.lineTo(x + 12, y + 14);
-  ctx.closePath();
-  ctx.fill();
+  const img = droneImages.get(activeDroneId);
+  const size = powerUpActive ? 46 : 40;
+  if (img && img.complete) {
+    ctx.globalAlpha = 0.95;
+    ctx.drawImage(img, x - size / 2, y - size / 2, size, size);
+    if (powerUpActive) {
+      ctx.strokeStyle = "rgba(194, 245, 255, 0.6)";
+      ctx.lineWidth = 2;
+      ctx.beginPath();
+      ctx.arc(x, y, size * 0.6, 0, Math.PI * 2);
+      ctx.stroke();
+    }
+  } else {
+    ctx.fillStyle = powerUpActive ? "#c2f5ff" : "#9fd8ff";
+    ctx.beginPath();
+    ctx.moveTo(x, y - 18);
+    ctx.lineTo(x - 12, y + 14);
+    ctx.lineTo(x + 12, y + 14);
+    ctx.closePath();
+    ctx.fill();
+  }
   ctx.restore();
 }
 
@@ -340,8 +496,8 @@ function drawTargets() {
   targets.forEach((target) => {
     const x = target.x * viewWidth;
     const y = target.y * viewHeight;
-    ctx.fillStyle = "#ffd84a";
-    ctx.font = "20px Courier New";
+    ctx.fillStyle = "#c2f5ff";
+    ctx.font = "20px IBM Plex Mono, Courier New, monospace";
     ctx.fillText("₿", x - 8, y + 8);
   });
   ctx.restore();
@@ -352,7 +508,7 @@ function drawObstacles() {
   obstacles.forEach((obstacle) => {
     const x = obstacle.x * viewWidth;
     const y = obstacle.y * viewHeight;
-    ctx.fillStyle = "#ff4d6d";
+    ctx.fillStyle = "#ff6b7a";
     ctx.fillRect(
       x - (obstacle.w * viewWidth) / 2,
       y - (obstacle.h * viewHeight) / 2,
@@ -368,12 +524,12 @@ function drawPowerUps() {
   powerUps.forEach((power) => {
     const x = power.x * viewWidth;
     const y = power.y * viewHeight;
-    ctx.strokeStyle = "#7df9ff";
+    ctx.strokeStyle = "#c2f5ff";
     ctx.lineWidth = 2;
     ctx.beginPath();
     ctx.arc(x, y, power.r * viewWidth, 0, Math.PI * 2);
     ctx.stroke();
-    ctx.fillStyle = "#7df9ff";
+    ctx.fillStyle = "#c2f5ff";
     ctx.fillText("+", x - 4, y + 4);
   });
   ctx.restore();
@@ -381,7 +537,7 @@ function drawPowerUps() {
 
 function drawBullets() {
   ctx.save();
-  ctx.strokeStyle = "#9fffe0";
+  ctx.strokeStyle = "#9fd8ff";
   ctx.lineWidth = 2;
   bullets.forEach((bullet) => {
     const x = bullet.x * viewWidth;
@@ -397,7 +553,7 @@ function drawBullets() {
 function drawParticles() {
   ctx.save();
   particles.forEach((particle) => {
-    ctx.fillStyle = `rgba(255, 216, 74, ${particle.life})`;
+    ctx.fillStyle = `rgba(194, 245, 255, ${particle.life})`;
     ctx.beginPath();
     ctx.arc(particle.x * viewWidth, particle.y * viewHeight, 3, 0, Math.PI * 2);
     ctx.fill();
@@ -420,10 +576,11 @@ function loop(timestamp) {
   const now = timestamp || performance.now();
   const dt = Math.min(0.033, (now - lastTime) / 1000);
   lastTime = now;
+  updateStars(dt);
   if (gameState === "playing") {
     update(dt, now);
-    render();
   }
+  render();
   if (diagnosticsEnabled) {
     fpsEl.textContent = Math.round(1 / dt);
   }
@@ -454,7 +611,7 @@ function startGame() {
   gameOverScreen.classList.add("hidden");
   warningBanner.classList.add("hidden");
   score = 0;
-  health = CONFIG.maxHealth;
+  health = maxHealth;
   level = 1;
   elapsed = 0;
   bullets = [];
@@ -497,6 +654,23 @@ function initUI() {
   if (savedName) {
     usernameInput.value = savedName;
   }
+  const savedDrone = localStorage.getItem(DRONE_STORAGE_KEY);
+  if (savedDrone) {
+    setActiveDrone(savedDrone);
+  } else {
+    setActiveDrone(activeDroneId);
+  }
+  updateDroneSelectionUI();
+  loadDroneImages();
+  droneButtons.forEach((button) => {
+    button.addEventListener("click", () => {
+      const { drone } = button.dataset;
+      if (!drone) return;
+      localStorage.setItem(DRONE_STORAGE_KEY, drone);
+      setActiveDrone(drone);
+      updateDroneSelectionUI();
+    });
+  });
   startButton.addEventListener("click", () => {
     if (usernameInput.value.trim()) {
       localStorage.setItem("lingo_username", usernameInput.value.trim());

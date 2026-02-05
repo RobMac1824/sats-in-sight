@@ -1,0 +1,12 @@
+<!-- Source: Tabler Icons (drone-off) https://tabler-icons.io/ (MIT) -->
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64" fill="none" stroke="#9fd8ff" stroke-width="3" stroke-linecap="round" stroke-linejoin="round">
+  <circle cx="16" cy="20" r="7" />
+  <circle cx="48" cy="20" r="7" />
+  <circle cx="16" cy="44" r="7" />
+  <circle cx="48" cy="44" r="7" />
+  <path d="M22 20h20" />
+  <path d="M22 44h20" />
+  <rect x="26" y="28" width="12" height="8" rx="2" />
+  <path d="M30 36l-4 6" />
+  <path d="M38 36l4 6" />
+</svg>

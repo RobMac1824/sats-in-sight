@@ -1,8 +1,8 @@
 https://robmac1824.github.io/sats-in-sight/
 
-# Lingo Lingo: BTC Blaster
+# Sats in Sight
 
-A swipe-friendly, Star Fox–inspired rail shooter with a Betaflight-style HUD. Blast incoming ₿ targets, dodge obstacles, and chase your high score in this mobile-first HTML5 canvas game.
+A swipe-friendly, radar-HUD rail shooter with a tactical FPV vibe. Tag incoming sats, dodge obstacles, and chase your high score in this mobile-first HTML5 canvas game.
 
 ## Features
 
@@ -81,6 +81,15 @@ If Supabase is not configured, the game automatically uses localStorage and show
 - Signal Boost power-ups increase fire rate and score value for a short time.
 - Difficulty ramps over time with faster spawns and higher speeds.
 
+## Attributions
+
+Drone icon sources:
+
+- Cinewhoop + Freestyle: Tabler Icons (MIT) — https://tabler-icons.io/
+- Racer + Heavy Lift: Iconoir (MIT) — https://iconoir.com/
+- Delivery: Game-icons.net “delivery-drone” (CC BY 3.0) — https://game-icons.net/
+- Mapper: SVGRepo (CC0) — https://www.svgrepo.com/
+
 ## File Structure
 
 ```
@@ -90,4 +99,12 @@ js/
   main.js
   audio.js
   supabase.js
+assets/
+  drones/
+    cinewhoop.svg
+    racer.svg
+    freestyle.svg
+    mapper.svg
+    delivery.svg
+    heavy-lift.svg
 ```

@@ -3,14 +3,16 @@
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
-  <title>Lingo Lingo: BTC Blaster</title>
+  <title>Sats in Sight</title>
   <link rel="stylesheet" href="styles.css" />
 </head>
 <body>
   <div id="app">
-    <canvas id="gameCanvas" aria-label="Lingo Lingo: BTC Blaster"></canvas>
+    <canvas id="gameCanvas" aria-label="Sats in Sight"></canvas>
 
     <div id="hud">
+      <div class="hud-top-left">SATS IN SIGHT</div>
+      <div class="hud-top-right">WFM 98.8 FM LINGOLINGO</div>
       <div class="hud-left">
         <div class="hud-line">RSSI <span id="hud-rssi">99</span></div>
         <div class="hud-line">VTX <span id="hud-vtx">WFM</span></div>
@@ -19,8 +21,8 @@
         <div class="hud-line">PWR <span id="hud-pwr">1.2</span>W</div>
       </div>
       <div class="hud-center">
-        <div class="hud-title">LINGO LINGO</div>
-        <div id="hud-callout">WFM 98.8 FM Lingolingo</div>
+        <div class="hud-title">TACTICAL FPV HUD</div>
+        <div id="hud-callout">SIGNAL CLEAN</div>
         <div id="level-callout" class="hidden">LEVEL 1</div>
       </div>
       <div class="hud-right">
@@ -45,9 +47,38 @@
 
     <div id="startScreen" class="screen">
       <div class="screen-inner">
-        <div class="radio">WFM 98.8 FM Lingolingo</div>
-        <h1>Lingo Lingo: BTC Blaster</h1>
-        <p>Swipe to steer your drone ship. Auto-fire engaged. Dodge obstacles and blast ₿ targets.</p>
+        <div class="radio">WFM 98.8 FM LINGOLINGO</div>
+        <h1>Sats in Sight</h1>
+        <p>Swipe to steer your drone. Auto-fire engaged. Dodge obstacles and tag incoming sats.</p>
+        <div class="drone-select">
+          <h2>Choose Your Drone</h2>
+          <div class="drone-grid">
+            <button class="drone-option" data-drone="cinewhoop" type="button">
+              <img src="assets/drones/cinewhoop.svg" alt="Cinewhoop drone" />
+              <span>Cinewhoop</span>
+            </button>
+            <button class="drone-option" data-drone="racer" type="button">
+              <img src="assets/drones/racer.svg" alt="Racer drone" />
+              <span>Racer</span>
+            </button>
+            <button class="drone-option" data-drone="freestyle" type="button">
+              <img src="assets/drones/freestyle.svg" alt="Freestyle drone" />
+              <span>Freestyle</span>
+            </button>
+            <button class="drone-option" data-drone="mapper" type="button">
+              <img src="assets/drones/mapper.svg" alt="Mapper drone" />
+              <span>Mapper</span>
+            </button>
+            <button class="drone-option" data-drone="delivery" type="button">
+              <img src="assets/drones/delivery.svg" alt="Delivery drone" />
+              <span>Delivery</span>
+            </button>
+            <button class="drone-option" data-drone="heavy-lift" type="button">
+              <img src="assets/drones/heavy-lift.svg" alt="Heavy lift drone" />
+              <span>Heavy Lift</span>
+            </button>
+          </div>
+        </div>
         <label class="input-group">
           <span>Callsign</span>
           <input id="username" type="text" maxlength="16" placeholder="LINGO" />
