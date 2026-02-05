@@ -27,6 +27,8 @@ const CONFIG = {
 
 const MOBILE_ACCEL_MULTIPLIER = 2.1;
 const MOBILE_MAX_SPEED_MULTIPLIER = 1.35;
+const DRONE_MAX_SPEED_MULTIPLIER = 0.85;
+const STICK_RESPONSE_CURVE = 1.6;
 const STICK_RADIUS = 80;
 const STICK_FRICTION = 0.94;
 const IS_COARSE_POINTER =
@@ -396,6 +398,19 @@ function clamp(value, min, max) {
   return Math.max(min, Math.min(max, value));
 }
 
+function applyStickCurve(vector) {
+  const magnitude = Math.hypot(vector.x, vector.y);
+  if (magnitude === 0) {
+    return { x: 0, y: 0 };
+  }
+  const curved = Math.pow(magnitude, STICK_RESPONSE_CURVE);
+  const scale = curved / magnitude;
+  return {
+    x: vector.x * scale,
+    y: vector.y * scale,
+  };
+}
+
 function updateStickFromPointer() {
   let dx = pointerPos.x - stickCenter.x;
   let dy = pointerPos.y - stickCenter.y;
@@ -610,12 +625,16 @@ function updatePlayer(dt) {
     (IS_COARSE_POINTER ? MOBILE_ACCEL_MULTIPLIER : 1) *
     0.75;
   const accel = 1 - Math.pow(1 - accelBase, dt * 60);
-  const maxSpeed = activeDrone.maxSpeed * (IS_COARSE_POINTER ? MOBILE_MAX_SPEED_MULTIPLIER : 1);
+  const maxSpeed =
+    activeDrone.maxSpeed *
+    DRONE_MAX_SPEED_MULTIPLIER *
+    (IS_COARSE_POINTER ? MOBILE_MAX_SPEED_MULTIPLIER : 1);
   let desiredVx = 0;
   let desiredVy = 0;
   if (isTouching) {
-    desiredVx = stickVector.x * maxSpeed;
-    desiredVy = stickVector.y * maxSpeed;
+    const curvedVector = applyStickCurve(stickVector);
+    desiredVx = curvedVector.x * maxSpeed;
+    desiredVy = curvedVector.y * maxSpeed;
   }
   player.vx += (desiredVx - player.vx) * accel;
   player.vy += (desiredVy - player.vy) * accel;
