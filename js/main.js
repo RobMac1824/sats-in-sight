@@ -16,23 +16,20 @@ import {
 } from "./supabase.js";
 
 const CONFIG = {
-  playerSpeed: 3,
-  bulletSpeed: 5,
-  targetSpeed: 1.25,
-  obstacleSpeed: 1.6,
-  powerUpSpeed: 1.1,
-  spawnRate: 0.015,
-  obstacleRate: 0.005,
-  powerUpRate: 0.002,
+  fov: 360,
+  forwardSpeed: 28,
+  bulletSpeed: 48,
   fireRate: 240,
   maxHealth: 100,
   waveDuration: 20000,
-  readyDuration: 3000,
+  readyDuration: 2500,
+  spawnRate: 0.02,
+  redSatRate: 0.012,
+  powerUpRate: 0.0025,
 };
-const PLAY_PADDING_FACTOR = 0.08;
-const SPEED_MULTIPLIER = 0.5;
+
 const INPUT_SMOOTHING = 0.25;
-const SWIPE_SENSITIVITY = 1.8;
+const SWIPE_SENSITIVITY = 1.6;
 const MAX_FOLLOW_SPEED_MULTIPLIER = 1.5;
 const INPUT_ACCEL = 0.4;
 const POINTER_FOLLOW_STRENGTH = 0.35;
@@ -43,49 +40,49 @@ const DRONE_OPTIONS = [
     id: "cinewhoop",
     name: "Cinewhoop",
     image: "assets/drones/cinewhoop.svg",
-    speedMultiplier: 0.95,
-    fireRateMultiplier: 0.95,
-    healthBonus: 1,
+    accel: 0.42,
+    maxSpeed: 6,
+    collisionRadius: 0.6,
   },
   {
     id: "racer",
     name: "Racer",
     image: "assets/drones/racer.svg",
-    speedMultiplier: 1.1,
-    fireRateMultiplier: 1.05,
-    healthBonus: -1,
+    accel: 0.5,
+    maxSpeed: 7,
+    collisionRadius: 0.5,
   },
   {
     id: "freestyle",
     name: "Freestyle",
     image: "assets/drones/freestyle.svg",
-    speedMultiplier: 1.05,
-    fireRateMultiplier: 1.1,
-    healthBonus: 0,
+    accel: 0.46,
+    maxSpeed: 6.5,
+    collisionRadius: 0.55,
   },
   {
     id: "mapper",
     name: "Mapper",
     image: "assets/drones/mapper.svg",
-    speedMultiplier: 0.9,
-    fireRateMultiplier: 0.95,
-    healthBonus: 1,
+    accel: 0.38,
+    maxSpeed: 5.6,
+    collisionRadius: 0.65,
   },
   {
     id: "delivery",
     name: "Delivery",
     image: "assets/drones/delivery.svg",
-    speedMultiplier: 0.9,
-    fireRateMultiplier: 0.9,
-    healthBonus: 1,
+    accel: 0.36,
+    maxSpeed: 5.2,
+    collisionRadius: 0.7,
   },
   {
     id: "heavy-lift",
     name: "Heavy Lift",
     image: "assets/drones/heavy-lift.svg",
-    speedMultiplier: 0.85,
-    fireRateMultiplier: 0.9,
-    healthBonus: 1,
+    accel: 0.34,
+    maxSpeed: 4.8,
+    collisionRadius: 0.75,
   },
 ];
 
@@ -104,9 +101,11 @@ const hudLingo = document.getElementById("hud-lingo");
 const hudAlt = document.getElementById("hud-alt");
 const hudSpd = document.getElementById("hud-spd");
 const hudRssi = document.getElementById("hud-rssi");
+const hudLq = document.getElementById("hud-lq");
 const hudSat = document.getElementById("hud-sat");
-const hudPwr = document.getElementById("hud-pwr");
+const hudVtx = document.getElementById("hud-vtx");
 const levelCallout = document.getElementById("level-callout");
+const hudCallout = document.getElementById("hud-callout");
 const readyPanel = document.getElementById("readyPanel");
 const startScreen = document.getElementById("startScreen");
 const gameOverScreen = document.getElementById("gameOverScreen");
@@ -139,12 +138,11 @@ let maxHealth = CONFIG.maxHealth;
 let danger = 0;
 let combo = 0;
 let gameState = "start";
-let bullets = [];
-let targets = [];
-let obstacles = [];
+let shots = [];
+let sats = [];
+let powerUps = [];
 let particles = [];
 let flashes = [];
-let powerUps = [];
 let lastShotTime = 0;
 let activePowerUps = {
   shield: 0,
@@ -155,22 +153,26 @@ let diagnosticsEnabled = false;
 let pointerActive = false;
 let pointerPos = { x: 0, y: 0 };
 let smoothedPointerPos = { x: 0, y: 0 };
-let player = { x: 0.5, y: 0.7, vx: 0, vy: 0 };
+let player = { x: 0, y: 0, vx: 0, vy: 0 };
 let activeDroneId = DRONE_OPTIONS[0].id;
 let activeDrone = DRONE_OPTIONS[0];
-let playerSpeedMultiplier = 1;
-let fireRateMultiplier = 1;
 let currentFireRate = CONFIG.fireRate;
+let satsCollected = 0;
 const droneImages = new Map();
 const stars = [];
-const STAR_COUNT = 140;
-let playPaddingX = 0;
-let playPaddingY = 0;
-let stackHeightPx = 0;
-let loseThresholdPx = 0;
+const STAR_COUNT = 120;
 let shakeTime = 0;
 let shakeDuration = 0;
 let shakeMagnitude = 0;
+let lastWaveCallout = 0;
+
+const WORLD = {
+  corridorHalfWidth: 6,
+  corridorHalfHeight: 3.6,
+  spawnMinZ: 14,
+  spawnMaxZ: 60,
+  farZ: 80,
+};
 
 const lingoSnippets = [
   "DRN SYN OK",
@@ -191,9 +193,18 @@ function triggerShake(duration, magnitude) {
 }
 
 function showWaveCallout() {
+  const message = `Lingo Lingo – Wave ${wave}`;
+  hudCallout.textContent = message;
   levelCallout.textContent = `WAVE ${wave}`;
   levelCallout.classList.remove("hidden");
-  setTimeout(() => levelCallout.classList.add("hidden"), 1200);
+  lastWaveCallout = performance.now();
+  setTimeout(() => levelCallout.classList.add("hidden"), 1400);
+}
+
+function showRadioCallout(message) {
+  hudCallout.textContent = message;
+  hudCallout.classList.add("active");
+  setTimeout(() => hudCallout.classList.remove("active"), 1200);
 }
 
 function startReadyPhase() {
@@ -207,6 +218,7 @@ function startWave() {
   waveTimer = 0;
   readyPanel.classList.add("hidden");
   showWaveCallout();
+  showRadioCallout(`Lingo Lingo – Wave ${wave}`);
 }
 
 function resizeCanvas() {
@@ -216,10 +228,6 @@ function resizeCanvas() {
   canvas.width = innerWidth * devicePixelRatio;
   canvas.height = innerHeight * devicePixelRatio;
   ctx.setTransform(devicePixelRatio, 0, 0, devicePixelRatio, 0, 0);
-  playPaddingX = viewWidth * PLAY_PADDING_FACTOR;
-  playPaddingY = viewHeight * PLAY_PADDING_FACTOR;
-  loseThresholdPx = viewHeight * 0.3;
-  stackHeightPx = Math.min(stackHeightPx, viewHeight);
   initStars();
 }
 
@@ -227,21 +235,22 @@ function initStars() {
   stars.length = 0;
   for (let i = 0; i < STAR_COUNT; i += 1) {
     stars.push({
-      x: Math.random() * viewWidth,
-      y: Math.random() * viewHeight,
+      x: (Math.random() - 0.5) * WORLD.corridorHalfWidth * 6,
+      y: (Math.random() - 0.5) * WORLD.corridorHalfHeight * 6,
+      z: Math.random() * WORLD.farZ + 10,
       size: Math.random() * 1.6 + 0.4,
-      speed: Math.random() * 18 + 6,
-      alpha: Math.random() * 0.5 + 0.2,
+      speed: Math.random() * 0.7 + 0.3,
     });
   }
 }
 
 function updateStars(dt) {
   stars.forEach((star) => {
-    star.y += star.speed * dt * SPEED_MULTIPLIER;
-    if (star.y > viewHeight) {
-      star.y = -2;
-      star.x = Math.random() * viewWidth;
+    star.z -= CONFIG.forwardSpeed * star.speed * dt;
+    if (star.z < 8) {
+      star.z = WORLD.farZ;
+      star.x = (Math.random() - 0.5) * WORLD.corridorHalfWidth * 6;
+      star.y = (Math.random() - 0.5) * WORLD.corridorHalfHeight * 6;
     }
   });
 }
@@ -253,10 +262,8 @@ function getDroneById(id) {
 function setActiveDrone(id) {
   activeDroneId = id;
   activeDrone = getDroneById(id);
-  playerSpeedMultiplier = activeDrone.speedMultiplier;
-  fireRateMultiplier = activeDrone.fireRateMultiplier;
-  currentFireRate = CONFIG.fireRate / fireRateMultiplier;
-  maxHealth = CONFIG.maxHealth + activeDrone.healthBonus;
+  currentFireRate = CONFIG.fireRate;
+  maxHealth = CONFIG.maxHealth;
 }
 
 function loadDroneImages() {
@@ -280,34 +287,45 @@ function setPointerPosition(clientX, clientY) {
   const rect = canvas.getBoundingClientRect();
   const rawX = (clientX - rect.left) / rect.width;
   const rawY = (clientY - rect.top) / rect.height;
-  const bounds = getPlayBounds();
+  const targetX = (rawX - 0.5) * 2 * WORLD.corridorHalfWidth;
+  const targetY = (rawY - 0.5) * 2 * WORLD.corridorHalfHeight;
   pointerPos = {
-    x: bounds.minX + clamp(rawX, 0, 1) * (bounds.maxX - bounds.minX),
-    y: bounds.minY + clamp(rawY, 0, 1) * (bounds.maxY - bounds.minY),
+    x: clamp(targetX, -WORLD.corridorHalfWidth, WORLD.corridorHalfWidth),
+    y: clamp(targetY, -WORLD.corridorHalfHeight, WORLD.corridorHalfHeight),
   };
-  touchEl.textContent = `${Math.round(pointerPos.x * 100)},${Math.round(pointerPos.y * 100)}`;
+  touchEl.textContent = `${Math.round(pointerPos.x * 10)},${Math.round(pointerPos.y * 10)}`;
 }
 
-function spawnTarget() {
-  targets.push({
-    x: Math.random(),
-    y: -0.1,
-    r: 0.04,
-    speed: (CONFIG.targetSpeed + wave * 0.08) * SPEED_MULTIPLIER,
-  });
+function clamp(value, min, max) {
+  return Math.max(min, Math.min(max, value));
 }
 
-function spawnObstacle() {
-  obstacles.push({
-    x: Math.random(),
-    y: -0.1,
-    w: 0.08,
-    h: 0.05,
-    speed: (CONFIG.obstacleSpeed + wave * 0.12) * SPEED_MULTIPLIER,
+function getForwardSpeed() {
+  return CONFIG.forwardSpeed + wave * 1.8 + (activePowerUps.speed > 0 ? 6 : 0);
+}
+
+function getTunnelScale() {
+  return Math.max(0.55, 1 - wave * 0.04);
+}
+
+function spawnSat(type) {
+  const tunnelScale = getTunnelScale();
+  const maxX = WORLD.corridorHalfWidth * tunnelScale * 0.9;
+  const maxY = WORLD.corridorHalfHeight * tunnelScale * 0.9;
+  sats.push({
+    x: (Math.random() - 0.5) * maxX * 2,
+    y: (Math.random() - 0.5) * maxY * 2,
+    z: Math.random() * (WORLD.spawnMaxZ - WORLD.spawnMinZ) + WORLD.spawnMinZ,
+    radius: type === "red" ? 0.55 : 0.5,
+    type,
+    nearMissed: false,
   });
 }
 
 function spawnPowerUp() {
+  const tunnelScale = getTunnelScale();
+  const maxX = WORLD.corridorHalfWidth * tunnelScale * 0.85;
+  const maxY = WORLD.corridorHalfHeight * tunnelScale * 0.85;
   const roll = Math.random();
   let type = "shield";
   if (roll > 0.7) {
@@ -316,41 +334,47 @@ function spawnPowerUp() {
     type = "speed";
   }
   powerUps.push({
-    x: Math.random(),
-    y: -0.1,
-    r: 0.035,
-    speed: CONFIG.powerUpSpeed * SPEED_MULTIPLIER,
+    x: (Math.random() - 0.5) * maxX * 2,
+    y: (Math.random() - 0.5) * maxY * 2,
+    z: Math.random() * (WORLD.spawnMaxZ - WORLD.spawnMinZ) + WORLD.spawnMinZ,
+    radius: 0.6,
     type,
   });
 }
 
-function fireBullet(now) {
+function fireShot(now) {
   if (now - lastShotTime < currentFireRate) {
     return;
   }
-  bullets.push({
+  shots.push({
     x: player.x,
-    y: player.y - 0.05,
-    speed: CONFIG.bulletSpeed,
+    y: player.y,
+    z: 1,
+    radius: 0.15,
   });
   lastShotTime = now;
   playShoot();
 }
 
-function hitTarget(target) {
+function hitSat(sat) {
   combo = Math.max(1, combo + 1);
-  const baseScore = 10;
+  const baseScore = sat.type === "red" ? 12 : 8;
   const multiplier = activePowerUps.multiplier > 0 ? 2 : 1;
   score += baseScore * combo * multiplier;
+  if (combo > 0 && combo % 5 === 0) {
+    showRadioCallout(`Lingo Lingo – Combo x${combo}`);
+  }
   triggerShake(0.12, 6);
-  flashes.push({ x: target.x, y: target.y, life: 0.15 });
+  flashes.push({ x: sat.x, y: sat.y, z: sat.z, life: 0.15 });
   playHit();
   for (let i = 0; i < 12; i += 1) {
     particles.push({
-      x: target.x,
-      y: target.y,
-      vx: (Math.random() - 0.5) * 0.02 * SPEED_MULTIPLIER,
-      vy: (Math.random() - 0.5) * 0.02 * SPEED_MULTIPLIER,
+      x: sat.x,
+      y: sat.y,
+      z: sat.z,
+      vx: (Math.random() - 0.5) * 0.4,
+      vy: (Math.random() - 0.5) * 0.4,
+      vz: (Math.random() - 0.5) * 0.6,
       life: 1,
     });
   }
@@ -360,19 +384,14 @@ function resetCombo() {
   combo = 0;
 }
 
-function applyDamage(amount, options = {}) {
-  const { isObstacle = false } = options;
+function applyDamage(amount) {
   if (activePowerUps.shield > 0) {
     resetCombo();
     return;
   }
   health = Math.max(0, health - amount);
-  if (isObstacle) {
-    danger = Math.min(100, danger + 8);
-    resetCombo();
-  } else {
-    resetCombo();
-  }
+  danger = Math.min(100, danger + 12);
+  resetCombo();
   playHit();
   if (health <= 0) {
     endGame();
@@ -381,7 +400,7 @@ function applyDamage(amount, options = {}) {
 
 function activatePowerUp(type) {
   if (type === "shield") {
-    activePowerUps.shield = 3000;
+    activePowerUps.shield = 3200;
   }
   if (type === "multiplier") {
     activePowerUps.multiplier = 5000;
@@ -389,31 +408,8 @@ function activatePowerUp(type) {
   if (type === "speed") {
     activePowerUps.speed = 3000;
   }
+  showRadioCallout("Lingo Lingo – Powerup");
   playPowerUp();
-}
-
-function clamp(value, min, max) {
-  return Math.max(min, Math.min(max, value));
-}
-
-function getPlayBounds() {
-  const minX = playPaddingX / viewWidth;
-  const maxX = (viewWidth - playPaddingX) / viewWidth;
-  const minY = playPaddingY / viewHeight;
-  const floorY = Math.max(playPaddingY, viewHeight - stackHeightPx - playPaddingY);
-  const maxY = Math.max(minY, floorY / viewHeight);
-  return {
-    minX: clamp(minX, 0, 1),
-    maxX: clamp(maxX, 0, 1),
-    minY: clamp(minY, 0, 1),
-    maxY: clamp(maxY, 0, 1),
-  };
-}
-
-function constrainPlayerToBounds() {
-  const bounds = getPlayBounds();
-  player.x = clamp(player.x, bounds.minX, bounds.maxX);
-  player.y = clamp(player.y, bounds.minY, bounds.maxY);
 }
 
 function updatePlayer(dt) {
@@ -423,100 +419,103 @@ function updatePlayer(dt) {
   const dx = smoothedPointerPos.x - player.x;
   const dy = smoothedPointerPos.y - player.y;
   const speedBoost = activePowerUps.speed > 0 ? 1.35 : 1;
-  const speed = CONFIG.playerSpeed * playerSpeedMultiplier * speedBoost * SWIPE_SENSITIVITY;
+  const speed = activeDrone.maxSpeed * speedBoost * SWIPE_SENSITIVITY;
   const desiredVx = dx * speed;
   const desiredVy = dy * speed;
-  player.vx += (desiredVx - player.vx) * INPUT_ACCEL;
-  player.vy += (desiredVy - player.vy) * INPUT_ACCEL;
+  player.vx += (desiredVx - player.vx) * activeDrone.accel;
+  player.vy += (desiredVy - player.vy) * activeDrone.accel;
   const maxSpeed = speed * MAX_FOLLOW_SPEED_MULTIPLIER;
   player.vx = Math.max(-maxSpeed, Math.min(maxSpeed, player.vx));
   player.vy = Math.max(-maxSpeed, Math.min(maxSpeed, player.vy));
   player.x += player.vx * dt;
   player.y += player.vy * dt;
-  constrainPlayerToBounds();
+  const tunnelScale = getTunnelScale();
+  player.x = clamp(player.x, -WORLD.corridorHalfWidth * tunnelScale, WORLD.corridorHalfWidth * tunnelScale);
+  player.y = clamp(player.y, -WORLD.corridorHalfHeight * tunnelScale, WORLD.corridorHalfHeight * tunnelScale);
 }
 
 function updateEntities(dt, now) {
-  bullets = bullets.filter((bullet) => bullet.y > -0.1);
-  bullets.forEach((bullet) => {
-    bullet.y -= bullet.speed * dt;
-  });
+  const forwardSpeed = getForwardSpeed();
 
-  targets.forEach((target) => {
-    target.y += target.speed * dt;
+  // Object pipeline: everything lives in world-space (x,y,z). Each frame, the world moves
+  // toward the camera by decreasing z with forwardSpeed. Shots move forward by increasing z.
+  shots.forEach((shot) => {
+    shot.z += CONFIG.bulletSpeed * dt;
   });
-  const missedTargets = targets.filter((target) => target.y >= 1.2).length;
-  targets = targets.filter((target) => target.y < 1.2);
-  if (missedTargets > 0) {
-    resetCombo();
-  }
+  shots = shots.filter((shot) => shot.z < WORLD.farZ);
 
-  obstacles.forEach((obstacle) => {
-    obstacle.y += obstacle.speed * dt;
-  });
-  obstacles = obstacles.filter((obstacle) => {
-    const obstacleHeightPx = obstacle.h * viewHeight;
-    const obstacleBottom = obstacle.y * viewHeight + obstacleHeightPx / 2;
-    const stackTop = viewHeight - stackHeightPx;
-    if (obstacleBottom >= stackTop) {
-      stackHeightPx = Math.min(viewHeight, stackHeightPx + obstacleHeightPx);
-      return false;
-    }
-    return obstacle.y < 1.2;
+  sats.forEach((sat) => {
+    sat.z -= forwardSpeed * dt;
   });
 
   powerUps.forEach((power) => {
-    power.y += power.speed * dt;
+    power.z -= forwardSpeed * dt;
   });
-  powerUps = powerUps.filter((power) => power.y < 1.2);
 
   particles.forEach((particle) => {
-    particle.x += particle.vx;
-    particle.y += particle.vy;
+    particle.x += particle.vx * dt;
+    particle.y += particle.vy * dt;
+    particle.z += particle.vz * dt;
     particle.life -= dt * 1.1;
   });
   particles = particles.filter((particle) => particle.life > 0);
+
   flashes.forEach((flash) => {
     flash.life -= dt;
   });
   flashes = flashes.filter((flash) => flash.life > 0);
 
-  bullets.forEach((bullet, bulletIndex) => {
-    targets.forEach((target, targetIndex) => {
-      const dx = bullet.x - target.x;
-      const dy = bullet.y - target.y;
-      const dist = Math.hypot(dx, dy);
-      if (dist < target.r) {
-        hitTarget(target);
-        bullets.splice(bulletIndex, 1);
-        targets.splice(targetIndex, 1);
+  shots.forEach((shot, shotIndex) => {
+    sats.forEach((sat, satIndex) => {
+      if (sat.type !== "red") return;
+      const dx = shot.x - sat.x;
+      const dy = shot.y - sat.y;
+      const dz = shot.z - sat.z;
+      const dist = Math.hypot(dx, dy, dz);
+      if (dist < sat.radius + shot.radius) {
+        hitSat(sat);
+        shots.splice(shotIndex, 1);
+        sats.splice(satIndex, 1);
       }
     });
   });
 
-  targets.forEach((target, targetIndex) => {
-    const dist = Math.hypot(target.x - player.x, target.y - player.y);
-    if (dist < target.r + 0.05) {
-      targets.splice(targetIndex, 1);
-      applyDamage(20);
+  sats.forEach((sat, satIndex) => {
+    if (sat.z < 0.6 && !sat.nearMissed && sat.type === "red") {
+      const dist = Math.hypot(sat.x - player.x, sat.y - player.y);
+      if (dist < activeDrone.collisionRadius * 1.8) {
+        showRadioCallout("Lingo Lingo – Near miss");
+        sat.nearMissed = true;
+      }
     }
-  });
-
-  obstacles.forEach((obstacle, obstacleIndex) => {
-    if (
-      Math.abs(obstacle.x - player.x) < obstacle.w / 2 + 0.03 &&
-      Math.abs(obstacle.y - player.y) < obstacle.h / 2 + 0.04
-    ) {
-      obstacles.splice(obstacleIndex, 1);
-      applyDamage(20, { isObstacle: true });
+    if (sat.z < 0.8) {
+      const dist = Math.hypot(sat.x - player.x, sat.y - player.y, sat.z);
+      if (dist < sat.radius + activeDrone.collisionRadius) {
+        if (sat.type === "yellow") {
+          satsCollected += 1;
+          hitSat(sat);
+        } else {
+          applyDamage(18);
+        }
+        sats.splice(satIndex, 1);
+      } else if (sat.z < -2) {
+        sats.splice(satIndex, 1);
+        if (sat.type === "red") {
+          resetCombo();
+        }
+      }
     }
   });
 
   powerUps.forEach((power, powerIndex) => {
-    const dist = Math.hypot(power.x - player.x, power.y - player.y);
-    if (dist < power.r + 0.04) {
-      powerUps.splice(powerIndex, 1);
-      activatePowerUp(power.type);
+    if (power.z < 0.8) {
+      const dist = Math.hypot(power.x - player.x, power.y - player.y, power.z);
+      if (dist < power.radius + activeDrone.collisionRadius) {
+        powerUps.splice(powerIndex, 1);
+        activatePowerUp(power.type);
+      } else if (power.z < -2) {
+        powerUps.splice(powerIndex, 1);
+      }
     }
   });
 
@@ -526,26 +525,23 @@ function updateEntities(dt, now) {
     }
   });
 
-  fireBullet(now);
-  constrainPlayerToBounds();
-  if (stackHeightPx >= loseThresholdPx) {
-    endGame();
-  }
+  fireShot(now);
 }
 
 function updateTelemetry(dt) {
   hudAlt.textContent = Math.round(100 + Math.sin(elapsed / 1000) * 12);
-  hudSpd.textContent = Math.round(40 + wave * 3 + Math.cos(elapsed / 700) * 6);
+  hudSpd.textContent = Math.round(getForwardSpeed());
   hudRssi.textContent = Math.round(90 + Math.sin(elapsed / 400) * 8);
-  hudSat.textContent = 6 + (wave % 3);
-  hudPwr.textContent = (1 + wave * 0.2).toFixed(1);
+  hudLq.textContent = Math.round(70 + Math.cos(elapsed / 500) * 18);
+  hudSat.textContent = satsCollected;
+  hudVtx.textContent = "WFM";
   if (hudStack) {
-    const stackPercent = loseThresholdPx > 0 ? (stackHeightPx / loseThresholdPx) * 100 : 0;
-    hudStack.textContent = `${Math.min(100, Math.round(stackPercent))}%`;
+    hudStack.textContent = `${Math.min(100, Math.round(danger))}%`;
   }
-  if (elapsed % 2000 < 50) {
+  if (elapsed % 2400 < 50 && performance.now() - lastWaveCallout > 2000) {
     hudLingo.textContent = lingoSnippets[Math.floor(Math.random() * lingoSnippets.length)];
   }
+  danger = Math.max(0, danger - dt * 6);
 }
 
 function update(dt, now) {
@@ -558,13 +554,12 @@ function update(dt, now) {
     }
   } else {
     waveTimer += dt * 1000;
-    const targetRate = CONFIG.spawnRate + wave * 0.002;
-    const obstacleRate = CONFIG.obstacleRate + wave * 0.0012;
-    if (Math.random() < targetRate) {
-      spawnTarget();
+    const densityBoost = 1 + wave * 0.12;
+    if (Math.random() < CONFIG.spawnRate * densityBoost) {
+      spawnSat("yellow");
     }
-    if (Math.random() < obstacleRate) {
-      spawnObstacle();
+    if (Math.random() < CONFIG.redSatRate * densityBoost) {
+      spawnSat("red");
     }
     if (Math.random() < CONFIG.powerUpRate) {
       spawnPowerUp();
@@ -588,132 +583,149 @@ function update(dt, now) {
   }
 }
 
+// Perspective math: we keep the camera fixed at z=0 and project 3D world coords (x,y,z)
+// into 2D screen coords using a simple pinhole model. World objects are projected
+// relative to the drone's x/y position so the drone stays visually centered.
+// screenX = centerX + (x / z) * FOV
+// screenY = centerY + (y / z) * FOV
+// scale   = FOV / z
+function projectPoint(x, y, z) {
+  const centerX = viewWidth * 0.5;
+  const centerY = viewHeight * 0.5;
+  const scale = CONFIG.fov / z;
+  return {
+    x: centerX + x * scale,
+    y: centerY + y * scale,
+    scale,
+  };
+}
+
+function projectWorldPoint(x, y, z) {
+  return projectPoint(x - player.x, y - player.y, z);
+}
+
+function getFogAlpha(z) {
+  const fogStart = WORLD.spawnMaxZ * 0.7;
+  const fogEnd = WORLD.farZ;
+  if (z <= fogStart) return 0;
+  return clamp((z - fogStart) / (fogEnd - fogStart), 0, 1);
+}
+
 function drawBackground() {
-  ctx.fillStyle = "#070b12";
+  ctx.fillStyle = "#060a12";
   ctx.fillRect(0, 0, viewWidth, viewHeight);
   ctx.save();
-  ctx.fillStyle = "rgba(160, 210, 240, 0.6)";
   stars.forEach((star) => {
-    ctx.globalAlpha = star.alpha;
+    const projected = projectWorldPoint(star.x, star.y, star.z);
+    if (projected.scale <= 0) return;
+    ctx.globalAlpha = clamp(0.2 + (1 - star.z / WORLD.farZ) * 0.8, 0.1, 0.9);
+    ctx.fillStyle = "rgba(180, 220, 255, 0.9)";
     ctx.beginPath();
-    ctx.arc(star.x, star.y, star.size, 0, Math.PI * 2);
+    ctx.arc(projected.x, projected.y, star.size * projected.scale * 0.2, 0, Math.PI * 2);
     ctx.fill();
   });
-  ctx.globalAlpha = 1;
-  ctx.strokeStyle = "rgba(90, 140, 180, 0.18)";
+  ctx.restore();
+}
+
+function drawTunnel() {
+  const tunnelScale = getTunnelScale();
+  const halfW = WORLD.corridorHalfWidth * tunnelScale;
+  const halfH = WORLD.corridorHalfHeight * tunnelScale;
+  ctx.save();
+  ctx.strokeStyle = "rgba(110, 190, 230, 0.15)";
   ctx.lineWidth = 1;
-  const gridLines = 12;
-  for (let i = 0; i < gridLines; i += 1) {
-    const y = (i / gridLines) * viewHeight;
+
+  const step = 6;
+  for (let z = 6; z < WORLD.farZ; z += step) {
+    const p1 = projectWorldPoint(-halfW, -halfH, z);
+    const p2 = projectWorldPoint(halfW, -halfH, z);
+    const p3 = projectWorldPoint(halfW, halfH, z);
+    const p4 = projectWorldPoint(-halfW, halfH, z);
     ctx.beginPath();
-    ctx.moveTo(0, y);
-    ctx.lineTo(viewWidth, y);
+    ctx.moveTo(p1.x, p1.y);
+    ctx.lineTo(p2.x, p2.y);
+    ctx.lineTo(p3.x, p3.y);
+    ctx.lineTo(p4.x, p4.y);
+    ctx.closePath();
     ctx.stroke();
   }
-  for (let i = 0; i < gridLines; i += 1) {
-    const x = (i / gridLines) * viewWidth;
+
+  const wallLines = 6;
+  for (let i = 1; i < wallLines; i += 1) {
+    const ratio = (i / wallLines) * 2 - 1;
+    const x = ratio * halfW;
+    const topStart = projectWorldPoint(x, -halfH, 6);
+    const topEnd = projectWorldPoint(x, -halfH, WORLD.farZ);
+    const bottomStart = projectWorldPoint(x, halfH, 6);
+    const bottomEnd = projectWorldPoint(x, halfH, WORLD.farZ);
     ctx.beginPath();
-    ctx.moveTo(x, 0);
-    ctx.lineTo(x, viewHeight);
+    ctx.moveTo(topStart.x, topStart.y);
+    ctx.lineTo(topEnd.x, topEnd.y);
+    ctx.moveTo(bottomStart.x, bottomStart.y);
+    ctx.lineTo(bottomEnd.x, bottomEnd.y);
     ctx.stroke();
   }
-  ctx.strokeStyle = "rgba(120, 190, 220, 0.12)";
-  const rings = 3;
-  for (let i = 1; i <= rings; i += 1) {
-    ctx.beginPath();
-    ctx.arc(viewWidth * 0.5, viewHeight * 0.55, (Math.min(viewWidth, viewHeight) / 3) * (i / rings), 0, Math.PI * 2);
-    ctx.stroke();
-  }
+
   ctx.restore();
 }
 
 function drawPlayer() {
   ctx.save();
-  const x = player.x * viewWidth;
-  const y = player.y * viewHeight;
+  const projected = projectPoint(0, 0, 6);
   const img = droneImages.get(activeDroneId);
-  const size = 40;
+  const size = 36 * projected.scale;
   if (img && img.complete) {
     ctx.globalAlpha = 0.95;
-    ctx.drawImage(img, x - size / 2, y - size / 2, size, size);
+    ctx.drawImage(img, projected.x - size / 2, projected.y - size / 2, size, size);
   } else {
     ctx.fillStyle = "#9fd8ff";
     ctx.beginPath();
-    ctx.moveTo(x, y - 18);
-    ctx.lineTo(x - 12, y + 14);
-    ctx.lineTo(x + 12, y + 14);
+    ctx.moveTo(projected.x, projected.y - size * 0.5);
+    ctx.lineTo(projected.x - size * 0.4, projected.y + size * 0.4);
+    ctx.lineTo(projected.x + size * 0.4, projected.y + size * 0.4);
     ctx.closePath();
     ctx.fill();
   }
   if (activePowerUps.shield > 0) {
     ctx.strokeStyle = "rgba(130, 220, 255, 0.8)";
-    ctx.lineWidth = 3;
+    ctx.lineWidth = 2;
     ctx.beginPath();
-    ctx.arc(x, y, size * 0.8, 0, Math.PI * 2);
+    ctx.arc(projected.x, projected.y, size * 0.75, 0, Math.PI * 2);
     ctx.stroke();
   }
   if (activePowerUps.multiplier > 0) {
     ctx.strokeStyle = "rgba(255, 214, 120, 0.85)";
     ctx.lineWidth = 2;
     ctx.beginPath();
-    ctx.arc(x, y, size * 0.95, 0, Math.PI * 2);
+    ctx.arc(projected.x, projected.y, size * 0.9, 0, Math.PI * 2);
     ctx.stroke();
   }
   if (activePowerUps.speed > 0) {
     ctx.strokeStyle = "rgba(120, 255, 215, 0.7)";
     ctx.lineWidth = 2;
     ctx.beginPath();
-    ctx.moveTo(x - size * 0.9, y);
-    ctx.lineTo(x - size * 0.4, y - size * 0.4);
-    ctx.lineTo(x - size * 0.1, y);
+    ctx.moveTo(projected.x - size * 0.9, projected.y);
+    ctx.lineTo(projected.x - size * 0.4, projected.y - size * 0.4);
+    ctx.lineTo(projected.x - size * 0.1, projected.y);
     ctx.stroke();
   }
   ctx.restore();
 }
 
-function drawTargets() {
+function drawSats() {
   ctx.save();
-  targets.forEach((target) => {
-    const x = target.x * viewWidth;
-    const y = target.y * viewHeight;
-    ctx.fillStyle = "#c2f5ff";
-    ctx.font = "20px IBM Plex Mono, Courier New, monospace";
-    ctx.fillText("₿", x - 8, y + 8);
+  ctx.textAlign = "center";
+  ctx.textBaseline = "middle";
+  sats.forEach((sat) => {
+    if (sat.z <= 0.2) return;
+    const projected = projectWorldPoint(sat.x, sat.y, sat.z);
+    const fog = getFogAlpha(sat.z);
+    const size = 22 * projected.scale;
+    ctx.globalAlpha = 1 - fog * 0.7;
+    ctx.fillStyle = sat.type === "red" ? "#ff6b7a" : "#ffd84a";
+    ctx.font = `${size}px IBM Plex Mono, Courier New, monospace`;
+    ctx.fillText("●", projected.x, projected.y);
   });
-  ctx.restore();
-}
-
-function drawObstacles() {
-  ctx.save();
-  obstacles.forEach((obstacle) => {
-    const x = obstacle.x * viewWidth;
-    const y = obstacle.y * viewHeight;
-    ctx.fillStyle = "#ff6b7a";
-    ctx.fillRect(
-      x - (obstacle.w * viewWidth) / 2,
-      y - (obstacle.h * viewHeight) / 2,
-      obstacle.w * viewWidth,
-      obstacle.h * viewHeight
-    );
-  });
-  ctx.restore();
-}
-
-function drawStack() {
-  if (stackHeightPx <= 0) return;
-  ctx.save();
-  const topY = viewHeight - stackHeightPx;
-  ctx.fillStyle = "#b73a48";
-  ctx.fillRect(0, topY, viewWidth, stackHeightPx);
-  ctx.globalAlpha = 0.2;
-  ctx.fillStyle = "#8f2a35";
-  const blockW = Math.max(22, viewWidth * 0.05);
-  const blockH = Math.max(16, viewHeight * 0.035);
-  for (let y = topY; y < viewHeight; y += blockH + 4) {
-    for (let x = 0; x < viewWidth; x += blockW + 6) {
-      ctx.fillRect(x, y, blockW, blockH);
-    }
-  }
   ctx.restore();
 }
 
@@ -722,8 +734,9 @@ function drawPowerUps() {
   ctx.textAlign = "center";
   ctx.textBaseline = "middle";
   powerUps.forEach((power) => {
-    const x = power.x * viewWidth;
-    const y = power.y * viewHeight;
+    if (power.z <= 0.2) return;
+    const projected = projectWorldPoint(power.x, power.y, power.z);
+    const size = 18 * projected.scale;
     let stroke = "#c2f5ff";
     let text = "S";
     if (power.type === "multiplier") {
@@ -733,28 +746,29 @@ function drawPowerUps() {
       stroke = "#78ffd7";
       text = ">>";
     }
+    ctx.globalAlpha = 1 - getFogAlpha(power.z) * 0.6;
     ctx.strokeStyle = stroke;
     ctx.lineWidth = 2;
     ctx.beginPath();
-    ctx.arc(x, y, power.r * viewWidth, 0, Math.PI * 2);
+    ctx.arc(projected.x, projected.y, size * 0.6, 0, Math.PI * 2);
     ctx.stroke();
     ctx.fillStyle = stroke;
-    ctx.font = "12px IBM Plex Mono, Courier New, monospace";
-    ctx.fillText(text, x, y);
+    ctx.font = `${Math.max(10, size * 0.7)}px IBM Plex Mono, Courier New, monospace`;
+    ctx.fillText(text, projected.x, projected.y);
   });
   ctx.restore();
 }
 
-function drawBullets() {
+function drawShots() {
   ctx.save();
   ctx.strokeStyle = "#9fd8ff";
   ctx.lineWidth = 2;
-  bullets.forEach((bullet) => {
-    const x = bullet.x * viewWidth;
-    const y = bullet.y * viewHeight;
+  shots.forEach((shot) => {
+    if (shot.z <= 0.2) return;
+    const projected = projectWorldPoint(shot.x, shot.y, shot.z);
     ctx.beginPath();
-    ctx.moveTo(x, y);
-    ctx.lineTo(x, y - 12);
+    ctx.moveTo(projected.x, projected.y);
+    ctx.lineTo(projected.x, projected.y - 12 * projected.scale);
     ctx.stroke();
   });
   ctx.restore();
@@ -763,9 +777,11 @@ function drawBullets() {
 function drawParticles() {
   ctx.save();
   particles.forEach((particle) => {
+    if (particle.z <= 0.2) return;
+    const projected = projectWorldPoint(particle.x, particle.y, particle.z);
     ctx.fillStyle = `rgba(194, 245, 255, ${particle.life})`;
     ctx.beginPath();
-    ctx.arc(particle.x * viewWidth, particle.y * viewHeight, 3, 0, Math.PI * 2);
+    ctx.arc(projected.x, projected.y, 3 * projected.scale, 0, Math.PI * 2);
     ctx.fill();
   });
   ctx.restore();
@@ -774,13 +790,23 @@ function drawParticles() {
 function drawFlashes() {
   ctx.save();
   flashes.forEach((flash) => {
+    if (flash.z <= 0.2) return;
+    const projected = projectWorldPoint(flash.x, flash.y, flash.z);
     const alpha = Math.max(0, flash.life / 0.15);
     ctx.fillStyle = `rgba(255, 245, 200, ${alpha})`;
     ctx.beginPath();
-    ctx.arc(flash.x * viewWidth, flash.y * viewHeight, 18 * alpha, 0, Math.PI * 2);
+    ctx.arc(projected.x, projected.y, 16 * projected.scale * alpha, 0, Math.PI * 2);
     ctx.fill();
   });
   ctx.restore();
+}
+
+function drawFogOverlay() {
+  const gradient = ctx.createLinearGradient(0, viewHeight * 0.2, 0, viewHeight);
+  gradient.addColorStop(0, "rgba(6, 10, 18, 0)");
+  gradient.addColorStop(1, "rgba(6, 10, 18, 0.35)");
+  ctx.fillStyle = gradient;
+  ctx.fillRect(0, 0, viewWidth, viewHeight);
 }
 
 function render() {
@@ -793,14 +819,14 @@ function render() {
     ctx.translate(offsetX, offsetY);
   }
   drawBackground();
-  drawStack();
-  drawBullets();
-  drawTargets();
-  drawObstacles();
+  drawTunnel();
+  drawShots();
+  drawSats();
   drawPowerUps();
   drawParticles();
   drawFlashes();
   drawPlayer();
+  drawFogOverlay();
   ctx.restore();
 }
 
@@ -854,20 +880,19 @@ function startGame() {
   waveState = "ready";
   readyTimer = CONFIG.readyDuration;
   elapsed = 0;
-  bullets = [];
-  targets = [];
-  obstacles = [];
+  shots = [];
+  sats = [];
+  powerUps = [];
   particles = [];
   flashes = [];
-  powerUps = [];
   activePowerUps = {
     shield: 0,
     multiplier: 0,
     speed: 0,
   };
-  stackHeightPx = 0;
+  satsCollected = 0;
   pointerActive = true;
-  player = { x: 0.5, y: 0.7, vx: 0, vy: 0 };
+  player = { x: 0, y: 0, vx: 0, vy: 0 };
   readyPanel.classList.remove("hidden");
   startMusic();
 }
@@ -896,7 +921,6 @@ function handlePointerMove(event) {
   setPointerPosition(event.clientX, event.clientY);
   player.x += (pointerPos.x - player.x) * POINTER_FOLLOW_STRENGTH;
   player.y += (pointerPos.y - player.y) * POINTER_FOLLOW_STRENGTH;
-  constrainPlayerToBounds();
 }
 
 function handlePointerUp() {
