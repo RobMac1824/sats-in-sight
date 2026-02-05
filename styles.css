@@ -35,8 +35,8 @@ html {
   width: 100%;
   height: 100%;
   touch-action: none;
-  padding: calc(var(--safe-top) + 10px) calc(var(--safe-right) + 10px)
-    calc(var(--safe-bottom) + 10px) calc(var(--safe-left) + 10px);
+  padding: calc(var(--safe-top) + 12px) calc(var(--safe-right) + 12px)
+    calc(var(--safe-bottom) + 12px) calc(var(--safe-left) + 12px);
   box-sizing: border-box;
 }
 
