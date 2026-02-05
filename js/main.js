@@ -141,6 +141,10 @@ const fpsEl = document.getElementById("fps");
 const touchEl = document.getElementById("touch");
 const stateEl = document.getElementById("stateValue");
 const dtEl = document.getElementById("dtValue");
+const dprEl = document.getElementById("dprValue");
+const viewEl = document.getElementById("viewValue");
+const canvasSizeEl = document.getElementById("canvasSizeValue");
+const insetEl = document.getElementById("insetValue");
 const warningBanner = document.getElementById("warning");
 const muteButton = document.getElementById("muteButton");
 const droneButtons = document.querySelectorAll(".drone-option");
@@ -248,6 +252,7 @@ function setState(nextState) {
     case GAME_STATES.PLAYING:
       hud.classList.remove("hidden");
       dangerGauge.classList.remove("hidden");
+      resizeCanvas();
       break;
     case GAME_STATES.GAMEOVER:
       gameOverScreen.classList.remove("hidden");
@@ -281,13 +286,14 @@ function startWave() {
 }
 
 function resizeCanvas() {
-  const dprValue = Math.min(window.devicePixelRatio || 1, 3);
-  const cssW = Math.floor(canvas.clientWidth);
-  const cssH = Math.floor(canvas.clientHeight);
-  canvas.width = Math.floor(cssW * dprValue);
-  canvas.height = Math.floor(cssH * dprValue);
-  ctx.setTransform(dprValue, 0, 0, dprValue, 0, 0);
-  game.dpr = dprValue;
+  const dpr = Math.min(window.devicePixelRatio || 1, 3);
+  const rect = canvas.getBoundingClientRect();
+  const cssW = Math.max(1, Math.floor(rect.width));
+  const cssH = Math.max(1, Math.floor(rect.height));
+  canvas.width = Math.floor(cssW * dpr);
+  canvas.height = Math.floor(cssH * dpr);
+  ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+  game.dpr = dpr;
   game.viewW = cssW;
   game.viewH = cssH;
   game.hudInset = readHudInsets();
@@ -1022,13 +1028,18 @@ function drawCountdownOverlay() {
 
 function drawHudDebugRuler() {
   const inset = game.hudInset || { top: 0, right: 0, bottom: 0, left: 0 };
-  const xRight = game.viewW - 1 - inset.right;
+  const xRight = game.viewW - inset.right - 2;
   ctx.save();
   ctx.strokeStyle = "rgba(255,0,0,0.6)";
   ctx.beginPath();
   ctx.moveTo(xRight, 0);
   ctx.lineTo(xRight, game.viewH);
   ctx.stroke();
+  ctx.fillStyle = "rgba(255,0,0,0.7)";
+  ctx.font = "10px IBM Plex Mono, Courier New, monospace";
+  ctx.textAlign = "right";
+  ctx.textBaseline = "top";
+  ctx.fillText("RIGHT EDGE", xRight - 4, inset.top + 6);
   ctx.restore();
 }
 
@@ -1078,6 +1089,21 @@ function loop(timestamp) {
       fpsAccumulator = 0;
     }
     dtEl.textContent = `${(dt * 1000).toFixed(1)}ms`;
+    if (dprEl) {
+      dprEl.textContent = game.dpr.toFixed(2);
+    }
+    if (viewEl) {
+      viewEl.textContent = `${game.viewW}×${game.viewH}`;
+    }
+    if (canvasSizeEl) {
+      canvasSizeEl.textContent = `${canvas.width}×${canvas.height}`;
+    }
+    if (insetEl) {
+      const inset = game.hudInset || { top: 0, right: 0, bottom: 0, left: 0 };
+      insetEl.textContent = `L${Math.round(inset.left)} R${Math.round(
+        inset.right,
+      )} T${Math.round(inset.top)} B${Math.round(inset.bottom)}`;
+    }
   }
   requestAnimationFrame(loop);
 }
