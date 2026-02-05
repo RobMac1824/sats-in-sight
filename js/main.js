@@ -29,6 +29,7 @@ const CONFIG = {
   maxHealth: 100,
   levelDuration: 30000,
 };
+const SPEED_MULTIPLIER = 0.5;
 
 const DRONE_STORAGE_KEY = "sats_drone_skin";
 const DRONE_OPTIONS = [
@@ -178,7 +179,7 @@ function initStars() {
 
 function updateStars(dt) {
   stars.forEach((star) => {
-    star.y += star.speed * dt;
+    star.y += star.speed * dt * SPEED_MULTIPLIER;
     if (star.y > viewHeight) {
       star.y = -2;
       star.x = Math.random() * viewWidth;
@@ -230,7 +231,7 @@ function spawnTarget() {
     x: Math.random(),
     y: -0.1,
     r: 0.04,
-    speed: CONFIG.targetSpeed + level * 0.15,
+    speed: (CONFIG.targetSpeed + level * 0.075) * SPEED_MULTIPLIER,
   });
 }
 
@@ -240,7 +241,7 @@ function spawnObstacle() {
     y: -0.1,
     w: 0.08,
     h: 0.05,
-    speed: CONFIG.obstacleSpeed + level * 0.2,
+    speed: (CONFIG.obstacleSpeed + level * 0.1) * SPEED_MULTIPLIER,
   });
 }
 
@@ -249,7 +250,7 @@ function spawnPowerUp() {
     x: Math.random(),
     y: -0.1,
     r: 0.035,
-    speed: CONFIG.powerUpSpeed,
+    speed: CONFIG.powerUpSpeed * SPEED_MULTIPLIER,
   });
 }
 
@@ -274,8 +275,8 @@ function hitTarget(target) {
     particles.push({
       x: target.x,
       y: target.y,
-      vx: (Math.random() - 0.5) * 0.02,
-      vy: (Math.random() - 0.5) * 0.02,
+      vx: (Math.random() - 0.5) * 0.02 * SPEED_MULTIPLIER,
+      vy: (Math.random() - 0.5) * 0.02 * SPEED_MULTIPLIER,
       life: 1,
     });
   }
@@ -332,7 +333,7 @@ function updateEntities(dt, now) {
   particles.forEach((particle) => {
     particle.x += particle.vx;
     particle.y += particle.vy;
-    particle.life -= dt * 1.5;
+    particle.life -= dt * 1.1;
   });
   particles = particles.filter((particle) => particle.life > 0);
 
