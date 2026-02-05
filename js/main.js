@@ -35,6 +35,14 @@ const INPUT_ACCEL = 0.4;
 const POINTER_FOLLOW_STRENGTH = 0.35;
 
 const DRONE_STORAGE_KEY = "sats_drone_skin";
+const GAME_STATES = {
+  BOOT: "BOOT",
+  START: "START",
+  SELECT_DRONE: "SELECT_DRONE",
+  READY: "READY",
+  PLAYING: "PLAYING",
+  GAMEOVER: "GAMEOVER",
+};
 const DRONE_OPTIONS = [
   {
     id: "cinewhoop",
@@ -96,6 +104,7 @@ const hudCombo = document.getElementById("combo");
 const hudWave = document.getElementById("hud-wave");
 const healthFill = document.getElementById("healthFill");
 const healthValue = document.getElementById("healthValue");
+const hud = document.getElementById("hud");
 const dangerFill = document.getElementById("dangerFill");
 const hudLingo = document.getElementById("hud-lingo");
 const hudAlt = document.getElementById("hud-alt");
@@ -121,23 +130,28 @@ const diagnosticsToggle = document.getElementById("diagnosticsToggle");
 const diagnostics = document.getElementById("diagnostics");
 const fpsEl = document.getElementById("fps");
 const touchEl = document.getElementById("touch");
+const stateEl = document.getElementById("stateValue");
+const dtEl = document.getElementById("dtValue");
 const warningBanner = document.getElementById("warning");
 const muteButton = document.getElementById("muteButton");
 const droneButtons = document.querySelectorAll(".drone-option");
 const hudStack = document.getElementById("hud-stack");
+const dangerGauge = document.getElementById("dangerGauge");
+
+const game = {
+  state: GAME_STATES.BOOT,
+};
 
 let lastTime = 0;
 let elapsed = 0;
 let wave = 1;
 let waveTimer = 0;
-let waveState = "ready";
 let readyTimer = CONFIG.readyDuration;
 let score = 0;
 let health = CONFIG.maxHealth;
 let maxHealth = CONFIG.maxHealth;
 let danger = 0;
 let combo = 0;
-let gameState = "start";
 let shots = [];
 let sats = [];
 let powerUps = [];
@@ -165,6 +179,9 @@ let shakeTime = 0;
 let shakeDuration = 0;
 let shakeMagnitude = 0;
 let lastWaveCallout = 0;
+let dpr = window.devicePixelRatio || 1;
+let fpsAccumulator = 0;
+let fpsFrames = 0;
 
 const WORLD = {
   corridorHalfWidth: 6,
@@ -207,27 +224,61 @@ function showRadioCallout(message) {
   setTimeout(() => hudCallout.classList.remove("active"), 1200);
 }
 
+function hideAllScreens() {
+  startScreen.classList.add("hidden");
+  gameOverScreen.classList.add("hidden");
+  readyPanel.classList.add("hidden");
+  hud.classList.add("hidden");
+  dangerGauge.classList.add("hidden");
+}
+
+function setState(nextState) {
+  game.state = nextState;
+  hideAllScreens();
+  switch (nextState) {
+    case GAME_STATES.START:
+    case GAME_STATES.SELECT_DRONE:
+      startScreen.classList.remove("hidden");
+      break;
+    case GAME_STATES.READY:
+      hud.classList.remove("hidden");
+      dangerGauge.classList.remove("hidden");
+      readyPanel.classList.remove("hidden");
+      break;
+    case GAME_STATES.PLAYING:
+      hud.classList.remove("hidden");
+      dangerGauge.classList.remove("hidden");
+      break;
+    case GAME_STATES.GAMEOVER:
+      gameOverScreen.classList.remove("hidden");
+      break;
+    default:
+      break;
+  }
+  if (stateEl) {
+    stateEl.textContent = nextState;
+  }
+}
+
 function startReadyPhase() {
-  waveState = "ready";
   readyTimer = CONFIG.readyDuration;
-  readyPanel.classList.remove("hidden");
+  setState(GAME_STATES.READY);
 }
 
 function startWave() {
-  waveState = "active";
   waveTimer = 0;
-  readyPanel.classList.add("hidden");
   showWaveCallout();
   showRadioCallout(`Lingo Lingo – Wave ${wave}`);
 }
 
 function resizeCanvas() {
-  const { innerWidth, innerHeight, devicePixelRatio } = window;
+  const { innerWidth, innerHeight } = window;
+  dpr = window.devicePixelRatio || 1;
   viewWidth = innerWidth;
   viewHeight = innerHeight;
-  canvas.width = innerWidth * devicePixelRatio;
-  canvas.height = innerHeight * devicePixelRatio;
-  ctx.setTransform(devicePixelRatio, 0, 0, devicePixelRatio, 0, 0);
+  canvas.width = Math.round(innerWidth * dpr);
+  canvas.height = Math.round(innerHeight * dpr);
+  ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
   initStars();
 }
 
@@ -289,11 +340,13 @@ function setPointerPosition(clientX, clientY) {
   const rawY = (clientY - rect.top) / rect.height;
   const targetX = (rawX - 0.5) * 2 * WORLD.corridorHalfWidth;
   const targetY = (rawY - 0.5) * 2 * WORLD.corridorHalfHeight;
+  const canvasX = (clientX - rect.left) * dpr;
+  const canvasY = (clientY - rect.top) * dpr;
   pointerPos = {
     x: clamp(targetX, -WORLD.corridorHalfWidth, WORLD.corridorHalfWidth),
     y: clamp(targetY, -WORLD.corridorHalfHeight, WORLD.corridorHalfHeight),
   };
-  touchEl.textContent = `${Math.round(pointerPos.x * 10)},${Math.round(pointerPos.y * 10)}`;
+  touchEl.textContent = `${Math.round(canvasX)},${Math.round(canvasY)}`;
 }
 
 function clamp(value, min, max) {
@@ -545,41 +598,43 @@ function updateTelemetry(dt) {
 }
 
 function update(dt, now) {
-  if (gameState !== "playing") return;
-  elapsed += dt * 1000;
-  if (waveState === "ready") {
-    readyTimer -= dt * 1000;
-    if (readyTimer <= 0) {
-      startWave();
+  if (game.state === GAME_STATES.READY || game.state === GAME_STATES.PLAYING) {
+    elapsed += dt * 1000;
+    if (game.state === GAME_STATES.READY) {
+      readyTimer -= dt * 1000;
+      if (readyTimer <= 0) {
+        setState(GAME_STATES.PLAYING);
+        startWave();
+      }
+    } else {
+      waveTimer += dt * 1000;
+      const densityBoost = 1 + wave * 0.12;
+      if (Math.random() < CONFIG.spawnRate * densityBoost) {
+        spawnSat("yellow");
+      }
+      if (Math.random() < CONFIG.redSatRate * densityBoost) {
+        spawnSat("red");
+      }
+      if (Math.random() < CONFIG.powerUpRate) {
+        spawnPowerUp();
+      }
+      if (waveTimer >= CONFIG.waveDuration) {
+        wave += 1;
+        startReadyPhase();
+      }
     }
-  } else {
-    waveTimer += dt * 1000;
-    const densityBoost = 1 + wave * 0.12;
-    if (Math.random() < CONFIG.spawnRate * densityBoost) {
-      spawnSat("yellow");
+    updatePlayer(dt);
+    updateEntities(dt, now);
+    updateTelemetry(dt);
+    hudScore.textContent = score;
+    hudCombo.textContent = `COMBO x${combo}`;
+    healthValue.textContent = health;
+    healthFill.style.width = `${(health / maxHealth) * 100}%`;
+    hudWave.textContent = `WAVE ${wave}`;
+    dangerFill.style.width = `${danger}%`;
+    if (danger >= 100) {
+      endGame();
     }
-    if (Math.random() < CONFIG.redSatRate * densityBoost) {
-      spawnSat("red");
-    }
-    if (Math.random() < CONFIG.powerUpRate) {
-      spawnPowerUp();
-    }
-    if (waveTimer >= CONFIG.waveDuration) {
-      wave += 1;
-      startReadyPhase();
-    }
-  }
-  updatePlayer(dt);
-  updateEntities(dt, now);
-  updateTelemetry(dt);
-  hudScore.textContent = score;
-  hudCombo.textContent = `COMBO x${combo}`;
-  healthValue.textContent = health;
-  healthFill.style.width = `${(health / maxHealth) * 100}%`;
-  hudWave.textContent = `WAVE ${wave}`;
-  dangerFill.style.width = `${danger}%`;
-  if (danger >= 100) {
-    endGame();
   }
 }
 
@@ -832,18 +887,25 @@ function render() {
 
 function loop(timestamp) {
   const now = timestamp || performance.now();
-  const dt = Math.min(0.033, (now - lastTime) / 1000);
+  const safeLastTime = lastTime || now;
+  const dt = Math.min(0.033, Math.max(0, (now - safeLastTime) / 1000));
   lastTime = now;
   updateStars(dt);
   if (shakeTime > 0) {
     shakeTime = Math.max(0, shakeTime - dt);
   }
-  if (gameState === "playing") {
-    update(dt, now);
-  }
+  update(dt, now);
   render();
   if (diagnosticsEnabled) {
-    fpsEl.textContent = Math.round(1 / dt);
+    fpsFrames += 1;
+    fpsAccumulator += dt;
+    if (fpsAccumulator >= 0.25) {
+      const fps = fpsFrames / fpsAccumulator;
+      fpsEl.textContent = Math.round(fps);
+      fpsFrames = 0;
+      fpsAccumulator = 0;
+    }
+    dtEl.textContent = `${(dt * 1000).toFixed(1)}ms`;
   }
   requestAnimationFrame(loop);
 }
@@ -867,9 +929,6 @@ async function updateLeaderboard() {
 }
 
 function startGame() {
-  gameState = "playing";
-  startScreen.classList.add("hidden");
-  gameOverScreen.classList.add("hidden");
   warningBanner.classList.add("hidden");
   score = 0;
   health = maxHealth;
@@ -877,8 +936,6 @@ function startGame() {
   combo = 0;
   wave = 1;
   waveTimer = 0;
-  waveState = "ready";
-  readyTimer = CONFIG.readyDuration;
   elapsed = 0;
   shots = [];
   sats = [];
@@ -893,23 +950,24 @@ function startGame() {
   satsCollected = 0;
   pointerActive = true;
   player = { x: 0, y: 0, vx: 0, vy: 0 };
-  readyPanel.classList.remove("hidden");
+  startReadyPhase();
   startMusic();
 }
 
 function endGame() {
-  gameState = "gameover";
   stopMusic();
   playGameOver();
   finalScore.textContent = score;
   finalWave.textContent = wave;
   finalCombo.textContent = combo;
-  readyPanel.classList.add("hidden");
-  gameOverScreen.classList.remove("hidden");
+  pointerActive = false;
+  touchEl.textContent = "0,0";
+  setState(GAME_STATES.GAMEOVER);
   updateLeaderboard();
 }
 
 function handlePointerDown(event) {
+  if (game.state !== GAME_STATES.READY && game.state !== GAME_STATES.PLAYING) return;
   pointerActive = true;
   resumeAudio();
   setPointerPosition(event.clientX, event.clientY);
@@ -917,6 +975,7 @@ function handlePointerDown(event) {
 }
 
 function handlePointerMove(event) {
+  if (game.state !== GAME_STATES.READY && game.state !== GAME_STATES.PLAYING) return;
   if (!pointerActive) return;
   setPointerPosition(event.clientX, event.clientY);
   player.x += (pointerPos.x - player.x) * POINTER_FOLLOW_STRENGTH;
@@ -925,6 +984,37 @@ function handlePointerMove(event) {
 
 function handlePointerUp() {
   pointerActive = false;
+  touchEl.textContent = "0,0";
+}
+
+function handleTouchStart(event) {
+  if (game.state !== GAME_STATES.READY && game.state !== GAME_STATES.PLAYING) return;
+  event.preventDefault();
+  const touch = event.touches[0];
+  if (!touch) return;
+  pointerActive = true;
+  resumeAudio();
+  setPointerPosition(touch.clientX, touch.clientY);
+  smoothedPointerPos = { ...pointerPos };
+}
+
+function handleTouchMove(event) {
+  if (game.state !== GAME_STATES.READY && game.state !== GAME_STATES.PLAYING) return;
+  event.preventDefault();
+  if (!pointerActive) return;
+  const touch = event.touches[0];
+  if (!touch) return;
+  setPointerPosition(touch.clientX, touch.clientY);
+  player.x += (pointerPos.x - player.x) * POINTER_FOLLOW_STRENGTH;
+  player.y += (pointerPos.y - player.y) * POINTER_FOLLOW_STRENGTH;
+}
+
+function handleTouchEnd(event) {
+  event.preventDefault();
+  if (event.touches.length === 0) {
+    pointerActive = false;
+    touchEl.textContent = "0,0";
+  }
 }
 
 function initUI() {
@@ -947,6 +1037,9 @@ function initUI() {
       localStorage.setItem(DRONE_STORAGE_KEY, drone);
       setActiveDrone(drone);
       updateDroneSelectionUI();
+      if (game.state === GAME_STATES.START) {
+        setState(GAME_STATES.SELECT_DRONE);
+      }
     });
   });
   startButton.addEventListener("click", () => {
@@ -964,6 +1057,7 @@ function initUI() {
     const muted = toggleMute();
     muteButton.textContent = muted ? "Unmute" : "Mute";
   });
+  setState(GAME_STATES.START);
 }
 
 function initInput() {
@@ -971,6 +1065,10 @@ function initInput() {
   canvas.addEventListener("pointermove", handlePointerMove);
   canvas.addEventListener("pointerup", handlePointerUp);
   canvas.addEventListener("pointercancel", handlePointerUp);
+  canvas.addEventListener("touchstart", handleTouchStart, { passive: false });
+  canvas.addEventListener("touchmove", handleTouchMove, { passive: false });
+  canvas.addEventListener("touchend", handleTouchEnd, { passive: false });
+  canvas.addEventListener("touchcancel", handleTouchEnd, { passive: false });
   window.addEventListener("blur", handlePointerUp);
 }
 

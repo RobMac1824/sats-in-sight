@@ -33,6 +33,7 @@ html {
   position: relative;
   width: 100%;
   height: 100%;
+  touch-action: none;
 }
 
 #gameCanvas {
@@ -42,6 +43,7 @@ html {
   height: 100%;
   background: radial-gradient(circle at center, #0b1220 0%, #070b12 60%);
   display: block;
+  touch-action: none;
 }
 
 #gameCanvas::after {
@@ -380,7 +382,7 @@ html {
 }
 
 .hidden {
-  display: none;
+  display: none !important;
 }
 
 #warning {
