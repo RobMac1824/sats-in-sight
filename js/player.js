@@ -1,4 +1,5 @@
 import { state } from "./state.js";
+import { log } from "./logger.js";
 import {
   CONFIG,
   DRONE_OPTIONS,
@@ -30,9 +31,13 @@ export function loadDroneImages() {
   DRONE_OPTIONS.forEach((drone) => {
     const img = new Image();
     img.src = drone.image;
-    img.decode()
+    img
+      .decode()
       .then(() => state.droneImages.set(drone.id, img))
-      .catch(() => state.droneImages.set(drone.id, img));
+      .catch((err) => {
+        log("WARN", `Drone image failed to decode: ${drone.id}`, err);
+        state.droneImages.set(drone.id, img);
+      });
   });
 }
 
@@ -47,9 +52,7 @@ export function updatePlayer(dt) {
   const centerX = state.game.viewW * 0.5;
   const centerY = state.game.viewH * 0.55;
   const accelBase =
-    state.activeDrone.accel *
-    (IS_COARSE_POINTER ? MOBILE_ACCEL_MULTIPLIER : 1) *
-    0.75;
+    state.activeDrone.accel * (IS_COARSE_POINTER ? MOBILE_ACCEL_MULTIPLIER : 1) * 0.75;
   const accel = 1 - Math.pow(1 - accelBase, dt * 60);
   const maxSpeed =
     state.activeDrone.maxSpeed *

@@ -1,3 +1,4 @@
+import { log } from "./logger.js";
 import {
   resumeAudio,
   startMusic,
@@ -6,30 +7,12 @@ import {
   playCountdownBeep,
   playGameOver,
 } from "./audio.js";
-import {
-  submitScore,
-  fetchLeaderboard,
-  fetchUserBest,
-} from "./supabase.js";
-import {
-  CONFIG,
-  COUNTDOWN_SEQUENCE,
-  GAME_STATES,
-  DRONE_STORAGE_KEY,
-} from "./config.js";
+import { submitScore, fetchLeaderboard, fetchUserBest } from "./supabase.js";
+import { CONFIG, COUNTDOWN_SEQUENCE, GAME_STATES, DRONE_STORAGE_KEY } from "./config.js";
 import { state, resetGameState } from "./state.js";
 import { initInput, endStickInput } from "./input.js";
-import {
-  setActiveDrone,
-  loadDroneImages,
-  updateDroneSelectionUI,
-  updatePlayer,
-} from "./player.js";
-import {
-  spawnAsteroid,
-  updateStars,
-  updateEntities,
-} from "./entities.js";
+import { setActiveDrone, loadDroneImages, updateDroneSelectionUI, updatePlayer } from "./player.js";
+import { spawnAsteroid, updateStars, updateEntities } from "./entities.js";
 import { render } from "./renderer.js";
 import {
   setState,
@@ -150,61 +133,71 @@ function update(dt, now) {
 }
 
 function loop(timestamp) {
-  const now = timestamp || performance.now();
-  const safeLastTime = state.lastTime || now;
-  const dt = Math.min(0.033, Math.max(0, (now - safeLastTime) / 1000));
-  state.lastTime = now;
-  if (state.game.state !== GAME_STATES.COUNTDOWN) {
-    updateStars(dt);
-  }
-  if (state.shakeTime > 0) {
-    state.shakeTime = Math.max(0, state.shakeTime - dt);
-  }
-  update(dt, now);
-  render();
-  if (state.diagnosticsEnabled) {
-    state.fpsFrames += 1;
-    state.fpsAccumulator += dt;
-    if (state.fpsAccumulator >= 0.25) {
-      const fps = state.fpsFrames / state.fpsAccumulator;
-      fpsEl.textContent = Math.round(fps);
-      state.fpsFrames = 0;
-      state.fpsAccumulator = 0;
+  try {
+    const now = timestamp || performance.now();
+    const safeLastTime = state.lastTime || now;
+    const dt = Math.min(0.033, Math.max(0, (now - safeLastTime) / 1000));
+    state.lastTime = now;
+    if (state.game.state !== GAME_STATES.COUNTDOWN) {
+      updateStars(dt);
     }
-    dtEl.textContent = `${(dt * 1000).toFixed(1)}ms`;
-    if (dprEl) {
-      dprEl.textContent = state.game.dpr.toFixed(2);
+    if (state.shakeTime > 0) {
+      state.shakeTime = Math.max(0, state.shakeTime - dt);
     }
-    if (viewEl) {
-      viewEl.textContent = `${state.game.viewW}×${state.game.viewH}`;
+    update(dt, now);
+    render();
+    if (state.diagnosticsEnabled) {
+      state.fpsFrames += 1;
+      state.fpsAccumulator += dt;
+      if (state.fpsAccumulator >= 0.25) {
+        const fps = state.fpsFrames / state.fpsAccumulator;
+        fpsEl.textContent = Math.round(fps);
+        state.fpsFrames = 0;
+        state.fpsAccumulator = 0;
+      }
+      dtEl.textContent = `${(dt * 1000).toFixed(1)}ms`;
+      if (dprEl) {
+        dprEl.textContent = state.game.dpr.toFixed(2);
+      }
+      if (viewEl) {
+        viewEl.textContent = `${state.game.viewW}×${state.game.viewH}`;
+      }
+      if (canvasSizeEl) {
+        canvasSizeEl.textContent = `${state.canvas.width}×${state.canvas.height}`;
+      }
+      if (insetEl) {
+        const inset = state.game.hudInset || { top: 0, right: 0, bottom: 0, left: 0 };
+        insetEl.textContent = `L${Math.round(inset.left)} R${Math.round(
+          inset.right,
+        )} T${Math.round(inset.top)} B${Math.round(inset.bottom)}`;
+      }
     }
-    if (canvasSizeEl) {
-      canvasSizeEl.textContent = `${state.canvas.width}×${state.canvas.height}`;
-    }
-    if (insetEl) {
-      const inset = state.game.hudInset || { top: 0, right: 0, bottom: 0, left: 0 };
-      insetEl.textContent = `L${Math.round(inset.left)} R${Math.round(
-        inset.right,
-      )} T${Math.round(inset.top)} B${Math.round(inset.bottom)}`;
-    }
+  } catch (err) {
+    log("ERROR", "Game loop error", err);
   }
   requestAnimationFrame(loop);
 }
 
 async function updateLeaderboard() {
-  const username = usernameInput.value || "LINGO";
-  await submitScore(username, state.score);
-  const leaderboard = await fetchLeaderboard();
-  const best = await fetchUserBest(username);
-  leaderboardList.innerHTML = "";
-  leaderboard.scores.forEach((entry) => {
-    const li = document.createElement("li");
-    li.textContent = `${entry.username} — ${entry.score}`;
-    leaderboardList.appendChild(li);
-  });
-  yourBest.textContent = best.best;
-  if (leaderboard.fallback || best.fallback) {
-    warningBanner.textContent = "Supabase not configured. Showing local leaderboard.";
+  try {
+    const username = usernameInput.value || "LINGO";
+    await submitScore(username, state.score);
+    const leaderboard = await fetchLeaderboard();
+    const best = await fetchUserBest(username);
+    leaderboardList.innerHTML = "";
+    leaderboard.scores.forEach((entry) => {
+      const li = document.createElement("li");
+      li.textContent = `${entry.username} — ${entry.score}`;
+      leaderboardList.appendChild(li);
+    });
+    yourBest.textContent = best.best;
+    if (leaderboard.fallback || best.fallback) {
+      warningBanner.textContent = "Supabase not configured. Showing local leaderboard.";
+      warningBanner.classList.remove("hidden");
+    }
+  } catch (err) {
+    log("ERROR", "Leaderboard update failed", err);
+    warningBanner.textContent = "Could not load leaderboard. Try again later.";
     warningBanner.classList.remove("hidden");
   }
 }
@@ -259,8 +252,11 @@ function initUI() {
     });
   });
   document.getElementById("startButton").addEventListener("click", () => {
-    if (usernameInput.value.trim()) {
-      localStorage.setItem("lingo_username", usernameInput.value.trim());
+    const raw = usernameInput.value.trim();
+    const sanitized = raw.replace(/[^a-zA-Z0-9 _-]/g, "").slice(0, 16);
+    if (sanitized.length > 0) {
+      usernameInput.value = sanitized;
+      localStorage.setItem("lingo_username", sanitized);
     }
     startGame();
   });
