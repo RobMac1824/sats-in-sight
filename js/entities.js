@@ -42,8 +42,8 @@ export function updateStars(dt) {
 export function spawnAsteroid(size = "large", position = null) {
   const spec = ASTEROID_SIZES[size];
   const margin = spec.radius + 20;
-  let x = 0;
-  let y = 0;
+  let x;
+  let y;
   if (position) {
     ({ x, y } = position);
   } else {

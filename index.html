@@ -1,134 +1,137 @@
-<!DOCTYPE html>
+<!doctype html>
 <html lang="en">
-<head>
-  <meta charset="UTF-8" />
-  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
-  <title>Sats in Sight</title>
-  <link rel="stylesheet" href="styles.css" />
-</head>
-<body>
-  <div id="app">
-    <canvas id="gameCanvas" aria-label="Sats in Sight"></canvas>
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
+    <title>Sats in Sight</title>
+    <link rel="stylesheet" href="styles.css" />
+  </head>
+  <body>
+    <div id="app">
+      <canvas id="gameCanvas" aria-label="Sats in Sight"></canvas>
 
-    <div id="hud">
-      <div class="hud-top-left">
-        <div class="hud-brand">SATS IN SIGHT</div>
-        <div class="hud-health">
-          <span>HEALTH</span>
-          <div class="health-bar">
-            <div id="healthFill"></div>
-          </div>
-          <span id="healthValue">100</span>
-        </div>
-      </div>
-      <div class="hud-top-center" id="hud-wave">WAVE 1</div>
-      <div class="hud-top-right">WFM 98.8 FM LINGOLINGO</div>
-      <div class="hud-left">
-        <div class="hud-line">RSSI <span id="hud-rssi">99</span></div>
-        <div class="hud-line">LQ <span id="hud-lq">88</span></div>
-        <div class="hud-line">VTX <span id="hud-vtx">WFM</span></div>
-        <div class="hud-line">ARM <span class="blink">ON</span></div>
-        <div class="hud-line">SAT <span id="hud-sat">7</span></div>
-      </div>
-      <div class="hud-center">
-        <div class="hud-title">TACTICAL FPV HUD</div>
-        <div id="hud-callout">SIGNAL CLEAN</div>
-        <div id="level-callout" class="hidden">LEVEL 1</div>
-      </div>
-      <div class="hud-right">
-        <div class="hud-line">ALT <span id="hud-alt">102</span>m</div>
-        <div class="hud-line">SPD <span id="hud-spd">42</span>kts</div>
-        <div class="hud-line">LINGO <span id="hud-lingo">DRN SYN OK</span></div>
-        <div class="hud-line">LNG-LNG <span class="blink">SYNC</span></div>
-      </div>
-      <div class="hud-bottom">
-        <div class="hud-score-block">
-          <div class="score-label">SCORE</div>
-          <div id="score">0</div>
-          <div id="combo">COMBO x0</div>
-        </div>
-        <div>STACK <span id="hud-stack">0%</span></div>
-      </div>
-    </div>
-
-    <div id="dangerGauge">
-      <div id="dangerFill"></div>
-    </div>
-
-    <div id="readyPanel" class="hidden">READY</div>
-
-    <div id="diagnostics" class="hidden">
-      <div>STATE: <span id="stateValue">BOOT</span></div>
-      <div>DT: <span id="dtValue">0</span></div>
-      <div>FPS: <span id="fps">0</span></div>
-      <div>DPR: <span id="dprValue">1</span></div>
-      <div>VIEW: <span id="viewValue">0x0</span></div>
-      <div>CANVAS: <span id="canvasSizeValue">0x0</span></div>
-      <div>INSET: <span id="insetValue">L0 R0 T0 B0</span></div>
-      <div>TOUCH: <span id="touch">0,0</span></div>
-    </div>
-
-    <div id="warning" class="hidden"></div>
-
-    <div id="startScreen" class="screen">
-      <div class="screen-inner">
-        <div class="radio">WFM 98.8 FM LINGOLINGO</div>
-        <h1>Sats in Sight</h1>
-        <p>Swipe to steer your drone. Auto-fire engaged. Clear drifting Bitcoin asteroids and stack sats.</p>
-        <div class="drone-select">
-          <h2>Choose Your Drone</h2>
-          <div class="drone-grid">
-            <button class="drone-option" data-drone="cinewhoop" type="button">
-              <img src="assets/drones/cinewhoop.svg" alt="Cinewhoop drone" />
-              <span>Cinewhoop</span>
-              <span class="selected-tag" aria-hidden="true">SELECTED</span>
-            </button>
-            <button class="drone-option" data-drone="racer" type="button">
-              <img src="assets/drones/racer.svg" alt="Racer drone" />
-              <span>Racer</span>
-              <span class="selected-tag" aria-hidden="true">SELECTED</span>
-            </button>
-            <button class="drone-option" data-drone="freestyle" type="button">
-              <img src="assets/drones/freestyle.svg" alt="Freestyle drone" />
-              <span>Freestyle</span>
-              <span class="selected-tag" aria-hidden="true">SELECTED</span>
-            </button>
-            <button class="drone-option" data-drone="heavy-lift" type="button">
-              <img src="assets/drones/heavy-lift.svg" alt="Heavy lift drone" />
-              <span>Heavy Lift</span>
-              <span class="selected-tag" aria-hidden="true">SELECTED</span>
-            </button>
+      <div id="hud">
+        <div class="hud-top-left">
+          <div class="hud-brand">SATS IN SIGHT</div>
+          <div class="hud-health">
+            <span>HEALTH</span>
+            <div class="health-bar">
+              <div id="healthFill"></div>
+            </div>
+            <span id="healthValue">100</span>
           </div>
         </div>
-        <label class="input-group">
-          <span>Callsign</span>
-          <input id="username" type="text" maxlength="16" placeholder="LINGO" />
-        </label>
-        <button id="startButton">Start Flight</button>
-        <button id="muteButton" class="secondary">Mute</button>
-      </div>
-    </div>
-
-    <div id="gameOverScreen" class="screen hidden">
-      <div class="screen-inner">
-        <h2>more cowbell?</h2>
-        <p>Final Score: <span id="finalScore">0</span></p>
-        <p>Final Wave: <span id="finalWave">1</span></p>
-        <p>Final Combo: <span id="finalCombo">0</span></p>
-        <div class="leaderboard">
-          <h3>Global Top 20</h3>
-          <ol id="leaderboardList"></ol>
-          <div class="your-best">Your best: <span id="yourBest">0</span></div>
+        <div class="hud-top-center" id="hud-wave">WAVE 1</div>
+        <div class="hud-top-right">WFM 98.8 FM LINGOLINGO</div>
+        <div class="hud-left">
+          <div class="hud-line">RSSI <span id="hud-rssi">99</span></div>
+          <div class="hud-line">LQ <span id="hud-lq">88</span></div>
+          <div class="hud-line">VTX <span id="hud-vtx">WFM</span></div>
+          <div class="hud-line">ARM <span class="blink">ON</span></div>
+          <div class="hud-line">SAT <span id="hud-sat">7</span></div>
         </div>
-        <button id="restartButton">Restart</button>
+        <div class="hud-center">
+          <div class="hud-title">TACTICAL FPV HUD</div>
+          <div id="hud-callout">SIGNAL CLEAN</div>
+          <div id="level-callout" class="hidden">LEVEL 1</div>
+        </div>
+        <div class="hud-right">
+          <div class="hud-line">ALT <span id="hud-alt">102</span>m</div>
+          <div class="hud-line">SPD <span id="hud-spd">42</span>kts</div>
+          <div class="hud-line">LINGO <span id="hud-lingo">DRN SYN OK</span></div>
+          <div class="hud-line">LNG-LNG <span class="blink">SYNC</span></div>
+        </div>
+        <div class="hud-bottom">
+          <div class="hud-score-block">
+            <div class="score-label">SCORE</div>
+            <div id="score">0</div>
+            <div id="combo">COMBO x0</div>
+          </div>
+          <div>STACK <span id="hud-stack">0%</span></div>
+        </div>
+      </div>
+
+      <div id="dangerGauge">
+        <div id="dangerFill"></div>
+      </div>
+
+      <div id="readyPanel" class="hidden">READY</div>
+
+      <div id="diagnostics" class="hidden">
+        <div>STATE: <span id="stateValue">BOOT</span></div>
+        <div>DT: <span id="dtValue">0</span></div>
+        <div>FPS: <span id="fps">0</span></div>
+        <div>DPR: <span id="dprValue">1</span></div>
+        <div>VIEW: <span id="viewValue">0x0</span></div>
+        <div>CANVAS: <span id="canvasSizeValue">0x0</span></div>
+        <div>INSET: <span id="insetValue">L0 R0 T0 B0</span></div>
+        <div>TOUCH: <span id="touch">0,0</span></div>
+      </div>
+
+      <div id="warning" class="hidden"></div>
+
+      <div id="startScreen" class="screen">
+        <div class="screen-inner">
+          <div class="radio">WFM 98.8 FM LINGOLINGO</div>
+          <h1>Sats in Sight</h1>
+          <p>
+            Swipe to steer your drone. Auto-fire engaged. Clear drifting Bitcoin asteroids and stack
+            sats.
+          </p>
+          <div class="drone-select">
+            <h2>Choose Your Drone</h2>
+            <div class="drone-grid">
+              <button class="drone-option" data-drone="cinewhoop" type="button">
+                <img src="assets/drones/cinewhoop.svg" alt="Cinewhoop drone" />
+                <span>Cinewhoop</span>
+                <span class="selected-tag" aria-hidden="true">SELECTED</span>
+              </button>
+              <button class="drone-option" data-drone="racer" type="button">
+                <img src="assets/drones/racer.svg" alt="Racer drone" />
+                <span>Racer</span>
+                <span class="selected-tag" aria-hidden="true">SELECTED</span>
+              </button>
+              <button class="drone-option" data-drone="freestyle" type="button">
+                <img src="assets/drones/freestyle.svg" alt="Freestyle drone" />
+                <span>Freestyle</span>
+                <span class="selected-tag" aria-hidden="true">SELECTED</span>
+              </button>
+              <button class="drone-option" data-drone="heavy-lift" type="button">
+                <img src="assets/drones/heavy-lift.svg" alt="Heavy lift drone" />
+                <span>Heavy Lift</span>
+                <span class="selected-tag" aria-hidden="true">SELECTED</span>
+              </button>
+            </div>
+          </div>
+          <label class="input-group">
+            <span>Callsign</span>
+            <input id="username" type="text" maxlength="16" placeholder="LINGO" />
+          </label>
+          <button id="startButton">Start Flight</button>
+          <button id="muteButton" class="secondary">Mute</button>
+        </div>
+      </div>
+
+      <div id="gameOverScreen" class="screen hidden">
+        <div class="screen-inner">
+          <h2>more cowbell?</h2>
+          <p>Final Score: <span id="finalScore">0</span></p>
+          <p>Final Wave: <span id="finalWave">1</span></p>
+          <p>Final Combo: <span id="finalCombo">0</span></p>
+          <div class="leaderboard">
+            <h3>Global Top 20</h3>
+            <ol id="leaderboardList"></ol>
+            <div class="your-best">Your best: <span id="yourBest">0</span></div>
+          </div>
+          <button id="restartButton">Restart</button>
+        </div>
+      </div>
+
+      <div id="controls">
+        <button id="diagnosticsToggle">Diagnostics</button>
       </div>
     </div>
 
-    <div id="controls">
-      <button id="diagnosticsToggle">Diagnostics</button>
-    </div>
-  </div>
-
-  <script type="module" src="js/main.js"></script>
-</body>
+    <script type="module" src="js/main.js"></script>
+  </body>
 </html>

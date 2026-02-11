@@ -1,3 +1,4 @@
+![CI](https://github.com/RobMac1824/sats-in-sight/actions/workflows/ci.yml/badge.svg)
 https://robmac1824.github.io/sats-in-sight/
 
 # Sats in Sight

@@ -128,10 +128,7 @@ function drawShots() {
     const hueStops = [350, 30, 55, 120, 180, 220, 280];
     hueStops.forEach((hue, index) => {
       const position = index / (hueStops.length - 1);
-      gradient.addColorStop(
-        position,
-        `hsl(${(hue + shot.hueOffset) % 360} 100% 60%)`,
-      );
+      gradient.addColorStop(position, `hsl(${(hue + shot.hueOffset) % 360} 100% 60%)`);
     });
     ctx.strokeStyle = gradient;
     ctx.lineWidth = 3;
