@@ -69,6 +69,7 @@ export function resetGameState() {
   state.fxBursts = [];
   state.flashes = [];
   state.hitPopups = [];
+  state.lastShotTime = 0;
   state.satsCollected = 0;
   state.isTouching = false;
   state.lastPointerCanvas = null;

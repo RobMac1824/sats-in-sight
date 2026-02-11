@@ -186,6 +186,7 @@ async function updateLeaderboard() {
     const best = await fetchUserBest(username);
     leaderboardList.innerHTML = "";
     leaderboard.scores.forEach((entry) => {
+      if (typeof entry.username !== "string" || typeof entry.score !== "number") return;
       const li = document.createElement("li");
       li.textContent = `${entry.username} — ${entry.score}`;
       leaderboardList.appendChild(li);

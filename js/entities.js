@@ -251,25 +251,34 @@ export function updateEntities(dt, now) {
   });
   state.hitPopups = state.hitPopups.filter((popup) => popup.life > 0);
 
-  state.shots.forEach((shot, shotIndex) => {
-    state.asteroids.forEach((asteroid, asteroidIndex) => {
-      const dist = Math.hypot(shot.x - asteroid.x, shot.y - asteroid.y);
-      if (dist < asteroid.radius) {
+  const hitShots = new Set();
+  const hitAsteroids = new Set();
+  state.shots.forEach((shot, si) => {
+    if (hitShots.has(si)) return;
+    state.asteroids.forEach((asteroid, ai) => {
+      if (hitShots.has(si) || hitAsteroids.has(ai)) return;
+      if (Math.hypot(shot.x - asteroid.x, shot.y - asteroid.y) < asteroid.radius) {
         hitAsteroid(asteroid, now);
-        state.shots.splice(shotIndex, 1);
-        state.asteroids.splice(asteroidIndex, 1);
+        hitShots.add(si);
+        hitAsteroids.add(ai);
       }
     });
   });
+  state.shots = state.shots.filter((_, i) => !hitShots.has(i));
+  state.asteroids = state.asteroids.filter((_, i) => !hitAsteroids.has(i));
 
-  state.asteroids.forEach((asteroid, asteroidIndex) => {
-    const dist = Math.hypot(state.player.x - asteroid.x, state.player.y - asteroid.y);
-    if (dist < asteroid.radius + state.activeDrone.collisionRadius) {
+  const playerHitAsteroids = new Set();
+  state.asteroids.forEach((asteroid, ai) => {
+    if (
+      Math.hypot(state.player.x - asteroid.x, state.player.y - asteroid.y) <
+      asteroid.radius + state.activeDrone.collisionRadius
+    ) {
       applyDamage(18);
       hitAsteroid(asteroid, now);
-      state.asteroids.splice(asteroidIndex, 1);
+      playerHitAsteroids.add(ai);
     }
   });
+  state.asteroids = state.asteroids.filter((_, i) => !playerHitAsteroids.has(i));
 
   fireShot(now);
 }
