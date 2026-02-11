@@ -33,7 +33,7 @@ export const DRONE_OPTIONS = [
   {
         id: "cinewhoop",
         name: "Cinewhoop",
-        image: "assets/drones/cinewhoop.svg",
+        image: "public/assets/drones/cinewhoop.svg",
         accel: 0.42,
         maxSpeed: 260,
         collisionRadius: 18,
@@ -41,7 +41,7 @@ export const DRONE_OPTIONS = [
   {
         id: "racer",
         name: "Racer",
-        image: "assets/drones/racer.svg",
+        image: "public/assets/drones/racer.svg",
         accel: 0.5,
         maxSpeed: 300,
         collisionRadius: 16,
@@ -49,7 +49,7 @@ export const DRONE_OPTIONS = [
   {
         id: "freestyle",
         name: "Freestyle",
-        image: "assets/drones/freestyle.svg",
+        image: "public/assets/drones/freestyle.svg",
         accel: 0.46,
         maxSpeed: 280,
         collisionRadius: 17,
@@ -57,7 +57,7 @@ export const DRONE_OPTIONS = [
   {
         id: "heavy-lift",
         name: "Heavy Lift",
-        image: "assets/drones/heavy-lift.svg",
+        image: "public/assets/drones/heavy-lift.svg",
         accel: 0.34,
         maxSpeed: 230,
         collisionRadius: 20,
@@ -65,7 +65,7 @@ export const DRONE_OPTIONS = [
   {
         id: "delivery",
         name: "Delivery",
-        image: "assets/drones/delivery.svg",
+        image: "public/assets/drones/delivery.svg",
         accel: 0.38,
         maxSpeed: 245,
         collisionRadius: 19,
@@ -73,7 +73,7 @@ export const DRONE_OPTIONS = [
   {
         id: "mapper",
         name: "Mapper",
-        image: "assets/drones/mapper.svg",
+        image: "public/assets/drones/mapper.svg",
         accel: 0.44,
         maxSpeed: 270,
         collisionRadius: 17,
