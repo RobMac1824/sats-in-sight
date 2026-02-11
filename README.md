@@ -52,11 +52,17 @@ create policy "public insert" on leaderboard
 
 > Note: This setup is insert-only. Each play session adds a new row; the game queries the best score per username client-side. For stricter security, require authenticated users or move writes to an Edge Function.
 
-Update `js/supabase.js` with your project values:
+Copy `.env.example` to `.env` and fill in your project values:
 
-```js
-export const SUPABASE_URL = "YOUR_SUPABASE_URL";
-export const SUPABASE_ANON_KEY = "YOUR_SUPABASE_ANON_KEY";
+```bash
+cp .env.example .env
+```
+
+Then edit `.env`:
+
+```
+VITE_SUPABASE_URL=https://your-project.supabase.co
+VITE_SUPABASE_ANON_KEY=your-anon-key
 ```
 
 If Supabase is not configured, the game automatically uses localStorage and shows a warning banner.
@@ -66,6 +72,48 @@ If Supabase is not configured, the game automatically uses localStorage and show
 1. Push this repo to GitHub.
 2. In **Settings → Pages**, set **Build and deployment** to the `main` branch (root folder).
 3. Save. Your game will be available at `https://<your-username>.github.io/<repo-name>/`.
+
+## Development
+
+### Prerequisites
+
+- [Node.js](https://nodejs.org/) (v18 or later recommended)
+
+### Setup
+
+```bash
+npm install
+```
+
+### Local Development
+
+Start the Vite dev server with hot reload:
+
+```bash
+npm run dev
+```
+
+The game will be available at `http://localhost:5173`.
+
+### Environment Variables
+
+Copy `.env.example` to `.env` and fill in your Supabase credentials. The dev server reads these automatically via Vite's `import.meta.env`:
+
+```bash
+cp .env.example .env
+```
+
+### Production Build
+
+```bash
+npm run build
+```
+
+The optimised output is written to the `dist/` directory. Preview it locally with:
+
+```bash
+npm run preview
+```
 
 ## Controls
 

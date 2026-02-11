@@ -1,12 +1,17 @@
-import { createClient } from "https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2/+esm";
+import { createClient } from "@supabase/supabase-js";
 
-export const SUPABASE_URL = "YOUR_SUPABASE_URL";
-export const SUPABASE_ANON_KEY = "YOUR_SUPABASE_ANON_KEY";
+const SUPABASE_URL = import.meta.env.VITE_SUPABASE_URL || "";
+const SUPABASE_ANON_KEY = import.meta.env.VITE_SUPABASE_ANON_KEY || "";
 
 const LOCAL_KEY = "ll_leaderboard";
 
 function hasSupabaseConfig() {
-  return !SUPABASE_URL.includes("YOUR_SUPABASE") && !SUPABASE_ANON_KEY.includes("YOUR_SUPABASE");
+  return (
+    SUPABASE_URL.length > 0 &&
+    SUPABASE_ANON_KEY.length > 0 &&
+    !SUPABASE_URL.includes("YOUR_SUPABASE") &&
+    !SUPABASE_ANON_KEY.includes("YOUR_SUPABASE")
+  );
 }
 
 function getLocalScores() {
