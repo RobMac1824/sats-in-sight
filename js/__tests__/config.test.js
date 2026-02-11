@@ -47,9 +47,9 @@ describe("GAME_STATES", () => {
 });
 
 describe("DRONE_OPTIONS", () => {
-  it("is an array with 4 entries", () => {
+    it("is an array with 6 entries", () => {
     expect(Array.isArray(DRONE_OPTIONS)).toBe(true);
-    expect(DRONE_OPTIONS).toHaveLength(4);
+        expect(DRONE_OPTIONS).toHaveLength(6);
   });
 
   it("each entry has id, name, image, accel, maxSpeed, collisionRadius", () => {
