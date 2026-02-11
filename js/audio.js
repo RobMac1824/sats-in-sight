@@ -9,10 +9,14 @@ const SCALES = [261.63, 329.63, 392.0, 523.25, 659.25, 784.0];
 
 function ensureContext() {
   if (!STATE.context) {
-    STATE.context = new (window.AudioContext || window.webkitAudioContext)();
-    STATE.masterGain = STATE.context.createGain();
-    STATE.masterGain.gain.value = 0.4;
-    STATE.masterGain.connect(STATE.context.destination);
+    try {
+      STATE.context = new (window.AudioContext || window.webkitAudioContext)();
+      STATE.masterGain = STATE.context.createGain();
+      STATE.masterGain.gain.value = 0.4;
+      STATE.masterGain.connect(STATE.context.destination);
+    } catch {
+      return;
+    }
   }
   if (STATE.context.state === "suspended") {
     STATE.context.resume();
