@@ -33,34 +33,7 @@ export default function CoiLibrary({ items, onUpdate }) {
         <>
           <DetailRow label="Holder" value={item.holderName} />
           <DetailRow label="Address" value={item.holderAddress} />
-          <div
-            style={{
-              fontSize: 11,
-              color: "#888",
-              fontFamily: "'JetBrains Mono', monospace",
-              textTransform: "uppercase",
-              letterSpacing: 1,
-              marginTop: 10,
-              marginBottom: 6,
-            }}
-          >
-            Additional Insured Language
-          </div>
-          <div
-            style={{
-              fontSize: 13,
-              color: "#cbd5e1",
-              background: "#080a0e",
-              border: "1px solid #1e293b",
-              borderRadius: 6,
-              padding: "10px 14px",
-              fontFamily: "'DM Sans', sans-serif",
-              lineHeight: 1.6,
-              marginBottom: 10,
-            }}
-          >
-            {item.additionalInsured}
-          </div>
+          <DetailRow label="Addtl Insured" value={item.additionalInsured} />
           <DetailRow label="Endorsements" value={item.specialEndorsements} />
           {item.minimumLimits && (
             <>
