@@ -1,6 +1,14 @@
-import React, { useState, useMemo } from "react";
+import React, { useState, useMemo, useRef } from "react";
 import { DetailRow } from "./ResourceLibrary";
 import { CLIENT_CATEGORIES, createClient } from "../data/clients";
+
+const CLIENT_EMPTY_QUIPS = [
+  "Manny's waving, but nobody's here yet!",
+  "No contacts in the Rolodex. Manny's lonely.",
+  "The client list is empty — time to make some calls!",
+  "Manny's ready to meet new people.",
+  "No contacts found. Manny checked twice.",
+];
 
 const s = {
   wrap: {
@@ -159,6 +167,7 @@ export default function ClientContacts({ items, onUpdate }) {
   const [activeCategory, setActiveCategory] = useState("All");
   const [search, setSearch] = useState("");
   const [expandedId, setExpandedId] = useState(null);
+  const emptyQuipRef = useRef(CLIENT_EMPTY_QUIPS[Math.floor(Math.random() * CLIENT_EMPTY_QUIPS.length)]);
 
   const filtered = useMemo(() => {
     let result = [...items];
@@ -340,8 +349,30 @@ export default function ClientContacts({ items, onUpdate }) {
 
         {/* 3-Column Grid */}
         {filtered.length === 0 ? (
-          <div style={s.emptyState}>
-            No clients found{search && " matching your search"}{activeCategory !== "All" && ` in ${activeCategory}`}.
+          <div style={{
+            ...s.emptyState,
+            display: "flex",
+            flexDirection: "column",
+            alignItems: "center",
+            gap: 14,
+          }}>
+            <img
+              src="/assets/manny-wave.png"
+              alt=""
+              style={{
+                width: 80,
+                height: 80,
+                objectFit: "contain",
+                opacity: 0.5,
+                filter: "drop-shadow(0 0 8px rgba(168,85,247,0.15)) grayscale(0.3)",
+              }}
+            />
+            <div style={{ fontSize: 14, color: "#94a3b8" }}>
+              {emptyQuipRef.current}
+            </div>
+            <div style={{ fontSize: 12, color: "#334155" }}>
+              No clients found{search && " matching your search"}{activeCategory !== "All" && ` in ${activeCategory}`}.
+            </div>
           </div>
         ) : (
           <div style={s.columns}>

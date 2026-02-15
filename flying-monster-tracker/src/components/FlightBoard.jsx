@@ -1,5 +1,14 @@
-import React, { useState } from "react";
+import React, { useState, useRef } from "react";
 import { JOB_STATUSES, JOB_STATUS_COLORS, createJob } from "../data/jobs";
+
+const FLIGHT_EMPTY_QUIPS = [
+  "Manny's scanning the skies… no flights on radar.",
+  "All clear for takeoff — but nothing's scheduled!",
+  "Runway is empty. Time to book some flights!",
+  "Manny's fueled up with nowhere to go.",
+  "The skies are quiet. Too quiet.",
+  "No jobs in the pipeline. Manny's doing barrel rolls to pass the time.",
+];
 
 const s = {
   header: {
@@ -130,6 +139,7 @@ const s = {
 export default function FlightBoard({ jobs, onUpdateJobs }) {
   const [filter, setFilter] = useState("All");
   const [selectedJob, setSelectedJob] = useState(null);
+  const emptyQuipRef = useRef(FLIGHT_EMPTY_QUIPS[Math.floor(Math.random() * FLIGHT_EMPTY_QUIPS.length)]);
 
   const criticalCount = jobs.filter((j) => j.critical).length;
   const filtered =
@@ -325,9 +335,31 @@ export default function FlightBoard({ jobs, onUpdateJobs }) {
       )}
 
       {filtered.length === 0 ? (
-        <div style={s.emptyState}>
-          No jobs {filter !== "All" ? `with status "${filter}"` : "yet"}. Click
-          "+ New Job" to create one.
+        <div style={{
+          ...s.emptyState,
+          display: "flex",
+          flexDirection: "column",
+          alignItems: "center",
+          gap: 14,
+        }}>
+          <img
+            src="/assets/manny-jetpack.png"
+            alt=""
+            style={{
+              width: 100,
+              height: 100,
+              objectFit: "contain",
+              opacity: 0.55,
+              filter: "drop-shadow(0 0 8px rgba(139,92,246,0.15))",
+            }}
+          />
+          <div style={{ fontSize: 14, color: "#94a3b8" }}>
+            {emptyQuipRef.current}
+          </div>
+          <div style={{ fontSize: 12, color: "#334155" }}>
+            No jobs {filter !== "All" ? `with status "${filter}"` : "yet"}. Click
+            "+ New Job" to create one.
+          </div>
         </div>
       ) : (
         filtered.map((job) => (

@@ -1,5 +1,12 @@
-import React, { useState, useMemo } from "react";
+import React, { useState, useMemo, useRef } from "react";
 import { createCoiTemplate } from "../data/coi";
+
+const COI_EMPTY_QUIPS = [
+  "No COI templates yet. Manny's paperwork-free!",
+  "The insurance shelf is bare — Manny's uninsured!",
+  "Zero templates. Manny needs some coverage.",
+  "Nothing here. Even drones need insurance.",
+];
 
 // Inline detail row — no external dependency
 function CoiDetailRow({ label, value }) {
@@ -38,6 +45,7 @@ function getInitials(name) {
 
 export default function CoiLibrary({ items, onUpdate }) {
   const [expandedId, setExpandedId] = useState(null);
+  const emptyQuipRef = useRef(COI_EMPTY_QUIPS[Math.floor(Math.random() * COI_EMPTY_QUIPS.length)]);
 
   // Dynamically group items by their category field, sorted alphabetically
   const grouped = useMemo(() => {
@@ -189,8 +197,34 @@ export default function CoiLibrary({ items, onUpdate }) {
 
       {/* Empty state */}
       {grouped.length === 0 && (
-        <div style={{ textAlign: "center", padding: "60px 20px", color: "#475569", fontSize: 14, fontFamily: "'DM Sans', sans-serif" }}>
-          No COI templates found. Click "+ Add COI Template" to get started.
+        <div style={{
+          textAlign: "center",
+          padding: "60px 20px",
+          color: "#475569",
+          fontSize: 14,
+          fontFamily: "'DM Sans', sans-serif",
+          display: "flex",
+          flexDirection: "column",
+          alignItems: "center",
+          gap: 14,
+        }}>
+          <img
+            src="/assets/manny-jetpack.png"
+            alt=""
+            style={{
+              width: 80,
+              height: 80,
+              objectFit: "contain",
+              opacity: 0.5,
+              filter: "drop-shadow(0 0 8px rgba(139,92,246,0.15)) grayscale(0.3)",
+            }}
+          />
+          <div style={{ fontSize: 14, color: "#94a3b8" }}>
+            {emptyQuipRef.current}
+          </div>
+          <div style={{ fontSize: 12, color: "#334155" }}>
+            Click "+ Add COI Template" to get started.
+          </div>
         </div>
       )}
     </div>

@@ -182,6 +182,28 @@ const APP_KEYFRAMES = `
   0%, 100% { box-shadow: 0 0 20px rgba(139,92,246,0.15), 0 0 60px rgba(139,92,246,0.05); }
   50% { box-shadow: 0 0 30px rgba(139,92,246,0.3), 0 0 80px rgba(139,92,246,0.1); }
 }
+@keyframes fm-wave-bob {
+  0%, 100% { transform: translateY(0) rotate(-3deg); }
+  50% { transform: translateY(-12px) rotate(3deg); }
+}
+@keyframes fm-jetpack-drift {
+  0%, 100% { transform: translateY(0) rotate(0deg); }
+  25% { transform: translateY(-4px) rotate(2deg); }
+  75% { transform: translateY(4px) rotate(-2deg); }
+}
+@keyframes fm-watermark-pulse {
+  0%, 100% { opacity: 0.018; }
+  50% { opacity: 0.035; }
+}
+@keyframes fm-sidebar-glow {
+  0%, 100% { box-shadow: 0 0 12px rgba(139,92,246,0.1); }
+  50% { box-shadow: 0 0 20px rgba(139,92,246,0.25), 0 0 40px rgba(139,92,246,0.08); }
+}
+@keyframes fm-login-wave-entrance {
+  0% { opacity: 0; transform: translateX(-30px) rotate(-15deg) scale(0.5); }
+  60% { opacity: 1; transform: translateX(5px) rotate(3deg) scale(1.05); }
+  100% { opacity: 1; transform: translateX(0) rotate(0deg) scale(1); }
+}
 `;
 
 // ─── Random flyby quips ───
@@ -340,6 +362,42 @@ export default function App() {
     return (
       <div style={loginStyles.container}>
         <style>{APP_KEYFRAMES}</style>
+
+        {/* Manny waving greeting — floats in from the left */}
+        <div style={{
+          position: "absolute",
+          left: "calc(50% - 240px)",
+          top: "28%",
+          animation: "fm-login-wave-entrance 1.2s ease-out forwards, fm-wave-bob 3s ease-in-out 1.2s infinite",
+          opacity: 0,
+        }}>
+          <img
+            src="/assets/manny-wave.png"
+            alt="Manny says hi!"
+            style={{
+              width: 90,
+              height: 90,
+              objectFit: "contain",
+              filter: "drop-shadow(0 0 12px rgba(168,85,247,0.3))",
+            }}
+          />
+        </div>
+
+        {/* Manny jetpack — tiny, drifts in the background */}
+        <div style={{
+          position: "absolute",
+          right: "12%",
+          top: "18%",
+          opacity: 0.12,
+          animation: "fm-jetpack-drift 6s ease-in-out infinite",
+        }}>
+          <img
+            src="/assets/manny-jetpack.png"
+            alt=""
+            style={{ width: 60, height: 60, objectFit: "contain" }}
+          />
+        </div>
+
         <img
           src="/assets/fm-badge.png"
           alt="Flying Monster"
@@ -453,18 +511,21 @@ export default function App() {
       <nav style={s.nav}>
         <div style={s.logo}>
           <div style={{
-            display: "flex", alignItems: "center", gap: 10, cursor: "pointer",
+            display: "flex", alignItems: "center", gap: 12, cursor: "pointer",
           }} onClick={handleBadgeClick}>
             <img
               src="/assets/fm-badge.png"
               alt="Flying Monster"
               style={{
-                width: 36,
-                height: 36,
+                width: 44,
+                height: 44,
                 objectFit: "contain",
                 borderRadius: "50%",
-                animation: badgeSpinning ? "fm-spin-once 0.6s ease-out" : "none",
+                animation: badgeSpinning
+                  ? "fm-spin-once 0.6s ease-out"
+                  : "fm-sidebar-glow 4s ease-in-out infinite",
                 transition: "transform 0.15s",
+                filter: "drop-shadow(0 0 6px rgba(139,92,246,0.2))",
               }}
             />
             <div>
@@ -516,14 +577,44 @@ export default function App() {
         ))}
 
         <div style={s.version}>
-          v1.2 — Flying Monster LLC
-          <br />
+          <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 6 }}>
+            <img
+              src="/assets/manny-jetpack.png"
+              alt=""
+              style={{
+                width: 22,
+                height: 22,
+                objectFit: "contain",
+                opacity: 0.35,
+                animation: "fm-jetpack-drift 5s ease-in-out infinite",
+                filter: "grayscale(0.4)",
+              }}
+            />
+            <span>v1.2 — Flying Monster LLC</span>
+          </div>
           localStorage · No backend
         </div>
       </nav>
 
       {/* Main Content */}
-      <main style={s.content}>
+      <main style={{ ...s.content, position: "relative", overflow: "hidden" }}>
+        {/* Subtle badge watermark */}
+        <img
+          src="/assets/fm-badge.png"
+          alt=""
+          style={{
+            position: "absolute",
+            right: -40,
+            bottom: -40,
+            width: 280,
+            height: 280,
+            objectFit: "contain",
+            opacity: 0.025,
+            pointerEvents: "none",
+            animation: "fm-watermark-pulse 8s ease-in-out infinite",
+            filter: "grayscale(0.5)",
+          }}
+        />
         <div style={s.pageTitle}>{current.title}</div>
         <div style={s.pageSubtitle}>{current.subtitle}</div>
 
