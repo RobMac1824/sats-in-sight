@@ -30,37 +30,21 @@ export default function CoiLibrary({ items, onUpdate }) {
         </div>
       )}
       renderDetail={(item) => (
-        <>
+        <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: "0 24px" }}>
           <DetailRow label="Holder" value={item.holderName} />
           <DetailRow label="Address" value={item.holderAddress} />
           <DetailRow label="Addtl Insured" value={item.additionalInsured} />
           <DetailRow label="Endorsements" value={item.specialEndorsements} />
-          {item.minimumLimits && (
-            <>
-              <div
-                style={{
-                  fontSize: 11,
-                  color: "#888",
-                  fontFamily: "'JetBrains Mono', monospace",
-                  textTransform: "uppercase",
-                  letterSpacing: 1,
-                  marginTop: 10,
-                  marginBottom: 6,
-                }}
-              >
-                Minimum Limits
-              </div>
-              {Object.entries(item.minimumLimits).map(([key, val]) => (
-                <DetailRow
-                  key={key}
-                  label={key.replace(/([A-Z])/g, " $1").trim()}
-                  value={val}
-                />
-              ))}
-            </>
-          )}
+          {item.minimumLimits &&
+            Object.entries(item.minimumLimits).map(([key, val]) => (
+              <DetailRow
+                key={key}
+                label={key.replace(/([A-Z])/g, " $1").trim()}
+                value={val}
+              />
+            ))}
           <DetailRow label="Last Used" value={item.lastUsed} />
-        </>
+        </div>
       )}
     />
   );
