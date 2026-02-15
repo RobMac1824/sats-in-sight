@@ -18,6 +18,14 @@ import CoiLibrary from "./components/CoiLibrary";
 import PermitsLibrary from "./components/PermitsLibrary";
 import ClientContacts from "./components/ClientContacts";
 import Questionnaires from "./components/Questionnaires";
+import FlyingMonsterLoader from "./components/FlyingMonsterLoader";
+
+// ─── Admin Users ───
+const ADMIN_USERS = [
+  { id: "john", name: "John Graham" },
+  { id: "dexter", name: "Dexter" },
+  { id: "matty", name: "Matty" },
+];
 
 // ─── localStorage helpers ───
 const STORAGE_KEY = "fm_tracker_v12";
@@ -146,8 +154,63 @@ const s = {
   },
 };
 
+// ─── Login Styles ───
+const loginStyles = {
+  container: {
+    position: "fixed",
+    inset: 0,
+    zIndex: 10000,
+    background: "#0a0a0f",
+    display: "flex",
+    flexDirection: "column",
+    alignItems: "center",
+    justifyContent: "center",
+    fontFamily: "'DM Sans', sans-serif",
+  },
+  title: {
+    fontSize: 28,
+    fontWeight: 700,
+    color: "#e2e8f0",
+    marginBottom: 6,
+  },
+  subtitle: {
+    fontSize: 12,
+    fontFamily: "'JetBrains Mono', monospace",
+    color: "#475569",
+    textTransform: "uppercase",
+    letterSpacing: 1.5,
+    marginBottom: 40,
+  },
+  prompt: {
+    fontSize: 14,
+    color: "#94a3b8",
+    marginBottom: 20,
+  },
+  userList: {
+    display: "flex",
+    flexDirection: "column",
+    gap: 10,
+    width: 260,
+  },
+  userButton: {
+    padding: "14px 20px",
+    background: "#131620",
+    border: "1px solid #1e2231",
+    borderRadius: 8,
+    color: "#e2e8f0",
+    fontSize: 15,
+    fontFamily: "'DM Sans', sans-serif",
+    fontWeight: 600,
+    cursor: "pointer",
+    textAlign: "left",
+    transition: "all 0.15s",
+  },
+};
+
 // ─── App ───
 export default function App() {
+  const [currentUser, setCurrentUser] = useState(null);
+  const [loading, setLoading] = useState(false);
   const [page, setPage] = useState("board");
 
   // All state with localStorage persistence
@@ -193,6 +256,51 @@ export default function App() {
   };
 
   const current = pageInfo[page];
+
+  // ─── Login Screen ───
+  if (!currentUser) {
+    return (
+      <div style={loginStyles.container}>
+        <div style={loginStyles.title}>Flying Monster</div>
+        <div style={loginStyles.subtitle}>Job Flight Tracker v1.2</div>
+        <div style={loginStyles.prompt}>Select your profile to continue</div>
+        <div style={loginStyles.userList}>
+          {ADMIN_USERS.map((user) => (
+            <button
+              key={user.id}
+              style={loginStyles.userButton}
+              onMouseEnter={(e) => {
+                e.currentTarget.style.borderColor = "#6366f1";
+                e.currentTarget.style.background = "#191d2b";
+              }}
+              onMouseLeave={(e) => {
+                e.currentTarget.style.borderColor = "#1e2231";
+                e.currentTarget.style.background = "#131620";
+              }}
+              onClick={() => {
+                setCurrentUser(user);
+                setLoading(true);
+              }}
+            >
+              {user.name}
+            </button>
+          ))}
+        </div>
+      </div>
+    );
+  }
+
+  // ─── Loading Animation ───
+  if (loading) {
+    return (
+      <FlyingMonsterLoader
+        mannyWaveUrl="/assets/manny-wave.png"
+        mannyJetpackUrl="/assets/manny-jetpack.png"
+        badgeUrl="/assets/fm-badge.png"
+        onComplete={() => setLoading(false)}
+      />
+    );
+  }
 
   return (
     <div style={s.app}>
