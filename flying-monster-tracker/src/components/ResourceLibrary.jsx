@@ -1,4 +1,4 @@
-import React, { useState, useMemo } from "react";
+import React, { useState, useMemo, useRef } from "react";
 
 // Shared organizational pattern for all resource libraries:
 // - Category filter sidebar
@@ -171,6 +171,10 @@ const s = {
     color: "#475569",
     fontSize: 14,
     fontFamily: "'DM Sans', sans-serif",
+    display: "flex",
+    flexDirection: "column",
+    alignItems: "center",
+    gap: 16,
   },
   statusDot: (color) => ({
     display: "inline-block",
@@ -181,6 +185,16 @@ const s = {
     marginRight: 6,
   }),
 };
+
+const EMPTY_QUIPS = [
+  "Manny searched the skies… nothing here yet.",
+  "Even drones need something to look at!",
+  "The airspace is clear — too clear.",
+  "No matches. Manny's on it.",
+  "Nothing found. Deploying search drone…",
+  "Manny flew around the block. Came back empty.",
+  "Zero results. Manny is unimpressed.",
+];
 
 export default function ResourceLibrary({
   title,
@@ -200,6 +214,7 @@ export default function ResourceLibrary({
   const [activeCategory, setActiveCategory] = useState("All");
   const [search, setSearch] = useState("");
   const [expandedId, setExpandedId] = useState(null);
+  const emptyQuipRef = useRef(EMPTY_QUIPS[Math.floor(Math.random() * EMPTY_QUIPS.length)]);
 
   const filtered = useMemo(() => {
     let result = items;
@@ -272,9 +287,23 @@ export default function ResourceLibrary({
         {/* Cards */}
         {filtered.length === 0 ? (
           <div style={s.emptyState}>
-            No {title.toLowerCase()} found
-            {search && " matching your search"}
-            {activeCategory !== "All" && ` in ${activeCategory}`}.
+            <img
+              src="/assets/manny-jetpack.png"
+              alt=""
+              style={{
+                width: 80,
+                height: 80,
+                objectFit: "contain",
+                opacity: 0.5,
+                filter: "grayscale(0.3)",
+              }}
+            />
+            <div>{emptyQuipRef.current}</div>
+            <div style={{ fontSize: 12, color: "#334155" }}>
+              No {title.toLowerCase()} found
+              {search && " matching your search"}
+              {activeCategory !== "All" && ` in ${activeCategory}`}.
+            </div>
           </div>
         ) : (
           <div style={s.list}>
