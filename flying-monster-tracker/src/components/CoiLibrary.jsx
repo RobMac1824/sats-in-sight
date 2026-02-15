@@ -1,20 +1,61 @@
 import React, { useState, useMemo } from "react";
-import { DetailRow } from "./ResourceLibrary";
-import { COI_CATEGORIES, createCoiTemplate } from "../data/coi";
+import { createCoiTemplate } from "../data/coi";
+
+// Inline detail row — no external dependency
+function CoiDetailRow({ label, value }) {
+  if (value === undefined || value === null || value === "") return null;
+  const display = Array.isArray(value)
+    ? value.join(", ")
+    : typeof value === "object"
+      ? JSON.stringify(value, null, 2)
+      : String(value);
+  return (
+    <div style={{ display: "flex", gap: 8, marginBottom: 6, fontSize: 13, fontFamily: "'DM Sans', sans-serif" }}>
+      <span style={{ color: "#64748b", minWidth: 120, flexShrink: 0, fontSize: 12, fontFamily: "'JetBrains Mono', monospace" }}>
+        {label}
+      </span>
+      <span style={{ color: "#cbd5e1", flex: 1, wordBreak: "break-word" }}>
+        {display}
+      </span>
+    </div>
+  );
+}
+
+// Get a display name from an item regardless of field naming
+function getDisplayName(item) {
+  return item.studio || item.name || item.title || "Untitled";
+}
+
+// Get initials from a display name
+function getInitials(name) {
+  return name
+    .split(/[\s/]+/)
+    .filter((w) => w.length > 1)
+    .slice(0, 2)
+    .map((w) => w[0].toUpperCase())
+    .join("");
+}
 
 export default function CoiLibrary({ items, onUpdate }) {
   const [expandedId, setExpandedId] = useState(null);
 
+  // Dynamically group items by their category field, sorted alphabetically
   const grouped = useMemo(() => {
-    const sortedCategories = [...COI_CATEGORIES].sort();
-    return sortedCategories
+    const catMap = {};
+    items.forEach((item) => {
+      const cat = item.category || "Uncategorized";
+      if (!catMap[cat]) catMap[cat] = [];
+      catMap[cat].push(item);
+    });
+
+    return Object.keys(catMap)
+      .sort((a, b) => a.localeCompare(b))
       .map((cat) => ({
         category: cat,
-        items: items
-          .filter((i) => i.category === cat)
-          .sort((a, b) => a.studio.localeCompare(b.studio)),
-      }))
-      .filter((g) => g.items.length > 0);
+        items: catMap[cat].sort((a, b) =>
+          getDisplayName(a).localeCompare(getDisplayName(b))
+        ),
+      }));
   }, [items]);
 
   return (
@@ -45,16 +86,13 @@ export default function CoiLibrary({ items, onUpdate }) {
             </span>
           </div>
 
-          {/* Two-column grid */}
+          {/* Two-column parallel grid */}
           <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 10 }}>
             {catItems.map((item) => {
               const isExpanded = expandedId === item.id;
-              const initials = item.studio
-                .split(/[\s/]+/)
-                .filter((w) => w.length > 1)
-                .slice(0, 2)
-                .map((w) => w[0].toUpperCase())
-                .join("");
+              const displayName = getDisplayName(item);
+              const initials = getInitials(displayName);
+              const subtitle = item.holderName || item.holderAddress || "";
 
               return (
                 <div
@@ -82,11 +120,13 @@ export default function CoiLibrary({ items, onUpdate }) {
                     </div>
                     <div style={{ flex: 1, minWidth: 0 }}>
                       <div style={{ fontSize: 14, fontWeight: 600, color: "#e2e8f0", fontFamily: "'DM Sans', sans-serif", whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>
-                        {item.studio || <span style={{ color: "#475569", fontStyle: "italic" }}>Untitled</span>}
+                        {displayName}
                       </div>
-                      <div style={{ fontSize: 12, color: "#64748b", fontFamily: "'DM Sans', sans-serif", whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>
-                        {item.holderName}
-                      </div>
+                      {subtitle && (
+                        <div style={{ fontSize: 12, color: "#64748b", fontFamily: "'DM Sans', sans-serif", whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>
+                          {subtitle}
+                        </div>
+                      )}
                     </div>
                   </div>
 
@@ -94,23 +134,23 @@ export default function CoiLibrary({ items, onUpdate }) {
                   {isExpanded && (
                     <div style={{ marginTop: 14, paddingTop: 14, borderTop: "1px solid #1e293b" }}>
                       <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: "0 24px" }}>
-                        <DetailRow label="Holder" value={item.holderName} />
-                        <DetailRow label="Address" value={item.holderAddress} />
-                        <DetailRow label="Addtl Insured" value={item.additionalInsured} />
-                        <DetailRow label="Endorsements" value={item.specialEndorsements} />
+                        <CoiDetailRow label="Holder" value={item.holderName} />
+                        <CoiDetailRow label="Address" value={item.holderAddress} />
+                        <CoiDetailRow label="Addtl Insured" value={item.additionalInsured} />
+                        <CoiDetailRow label="Endorsements" value={item.specialEndorsements} />
                         {item.minimumLimits &&
                           Object.entries(item.minimumLimits).map(([key, val]) => (
-                            <DetailRow
+                            <CoiDetailRow
                               key={key}
                               label={key.replace(/([A-Z])/g, " $1").trim()}
                               value={val}
                             />
                           ))}
-                        <DetailRow label="Last Used" value={item.lastUsed} />
+                        <CoiDetailRow label="Last Used" value={item.lastUsed} />
                       </div>
                       {item.notes && (
                         <div style={{ marginTop: 8 }}>
-                          <DetailRow label="Notes" value={item.notes} />
+                          <CoiDetailRow label="Notes" value={item.notes} />
                         </div>
                       )}
                       <div style={{ display: "flex", gap: 8, marginTop: 12 }}>
@@ -118,9 +158,9 @@ export default function CoiLibrary({ items, onUpdate }) {
                           style={{ background: "transparent", border: "1px solid #6366f1", borderRadius: 6, padding: "5px 12px", color: "#6366f1", fontSize: 12, fontFamily: "'DM Sans', sans-serif", cursor: "pointer" }}
                           onClick={(e) => {
                             e.stopPropagation();
-                            const studio = prompt("Studio name:", item.studio);
-                            if (studio !== null) {
-                              onUpdate(items.map((i) => (i.id === item.id ? { ...i, studio } : i)));
+                            const name = prompt("Studio name:", displayName);
+                            if (name !== null) {
+                              onUpdate(items.map((i) => (i.id === item.id ? { ...i, studio: name } : i)));
                             }
                           }}
                         >
@@ -146,6 +186,13 @@ export default function CoiLibrary({ items, onUpdate }) {
           </div>
         </div>
       ))}
+
+      {/* Empty state */}
+      {grouped.length === 0 && (
+        <div style={{ textAlign: "center", padding: "60px 20px", color: "#475569", fontSize: 14, fontFamily: "'DM Sans', sans-serif" }}>
+          No COI templates found. Click "+ Add COI Template" to get started.
+        </div>
+      )}
     </div>
   );
 }
